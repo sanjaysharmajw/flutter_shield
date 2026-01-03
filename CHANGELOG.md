@@ -67,3 +67,7 @@
 - Malware detection is basic and should be enhanced
 - WebView checks require runtime inspection
 - Certificate pinning not included (coming in future release)
+
+## 1.1.3
+
+### Update ReadMe File

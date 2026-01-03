@@ -62,7 +62,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  flutter_shield: ^1.1.2
+  flutter_shield: ^1.1.3
 ```
 
 Then run:

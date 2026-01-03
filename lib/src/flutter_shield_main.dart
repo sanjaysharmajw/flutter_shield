@@ -23,8 +23,7 @@ class FlutterShield {
       _platform.checkEmulator();
 
   /// Check for potential malware presence
-  static Future<SecurityCheckResult> checkMalware() =>
-      _platform.checkMalware();
+  static Future<SecurityCheckResult> checkMalware() => _platform.checkMalware();
 
   // Storage Security
 
@@ -95,8 +94,7 @@ class FlutterShield {
   // Communication
 
   /// Check inter-process communication security
-  static Future<SecurityCheckResult> checkIPC() =>
-      _platform.checkIPC();
+  static Future<SecurityCheckResult> checkIPC() => _platform.checkIPC();
 
   /// Check for intent hijacking vulnerabilities (Android)
   static Future<SecurityCheckResult> checkIntentHijacking() =>

@@ -17,7 +17,7 @@ class SecurityCheckResult {
   factory SecurityCheckResult.fromMap(Map<String, dynamic> map) {
     return SecurityCheckResult(
       type: VulnerabilityType.values.firstWhere(
-            (e) => e.toString() == 'VulnerabilityType.${map['type']}',
+        (e) => e.toString() == 'VulnerabilityType.${map['type']}',
         orElse: () => VulnerabilityType.unknown,
       ),
       isVulnerable: map['isVulnerable'] ?? false,

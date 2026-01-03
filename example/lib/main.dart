@@ -12,10 +12,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter Shield Demo',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
+      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
       home: const SecurityCheckScreen(),
     );
   }
@@ -44,9 +41,9 @@ class _SecurityCheckScreenState extends State<SecurityCheckScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -103,9 +100,9 @@ class _SecurityCheckScreenState extends State<SecurityCheckScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -113,10 +110,7 @@ class _SecurityCheckScreenState extends State<SecurityCheckScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Flutter Shield'),
-        elevation: 2,
-      ),
+      appBar: AppBar(title: const Text('Flutter Shield'), elevation: 2),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _report == null
@@ -222,14 +216,18 @@ class _SecurityCheckScreenState extends State<SecurityCheckScreen> {
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: isSecure ? Colors.green.shade900 : Colors.red.shade900,
+                          color: isSecure
+                              ? Colors.green.shade900
+                              : Colors.red.shade900,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         '${_report!.vulnerabilitiesFound} of ${_report!.totalChecks} checks failed',
                         style: TextStyle(
-                          color: isSecure ? Colors.green.shade700 : Colors.red.shade700,
+                          color: isSecure
+                              ? Colors.green.shade700
+                              : Colors.red.shade700,
                         ),
                       ),
                     ],

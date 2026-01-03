@@ -3,15 +3,14 @@ import 'package:flutter/services.dart';
 
 import '../flutter_shield.dart';
 
-
 class MethodChannelFlutterShield extends FlutterShieldPlatform {
   @visibleForTesting
   final methodChannel = const MethodChannel('flutter_shield');
 
   Future<SecurityCheckResult> _invokeCheck(
-      String method,
-      VulnerabilityType type,
-      ) async {
+    String method,
+    VulnerabilityType type,
+  ) async {
     try {
       final result = await methodChannel.invokeMethod<Map>(method);
       if (result != null) {
@@ -60,24 +59,32 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
       _invokeCheck('checkPlaintextData', VulnerabilityType.plaintextData);
 
   @override
-  Future<SecurityCheckResult> checkKeychainKeystore() =>
-      _invokeCheck('checkKeychainKeystore', VulnerabilityType.improperKeychainKeystore);
+  Future<SecurityCheckResult> checkKeychainKeystore() => _invokeCheck(
+    'checkKeychainKeystore',
+    VulnerabilityType.improperKeychainKeystore,
+  );
 
   @override
-  Future<SecurityCheckResult> checkFilePermissions() =>
-      _invokeCheck('checkFilePermissions', VulnerabilityType.insecureFilePermissions);
+  Future<SecurityCheckResult> checkFilePermissions() => _invokeCheck(
+    'checkFilePermissions',
+    VulnerabilityType.insecureFilePermissions,
+  );
 
   @override
-  Future<SecurityCheckResult> checkExternalStorage() =>
-      _invokeCheck('checkExternalStorage', VulnerabilityType.externalStorageSensitiveData);
+  Future<SecurityCheckResult> checkExternalStorage() => _invokeCheck(
+    'checkExternalStorage',
+    VulnerabilityType.externalStorageSensitiveData,
+  );
 
   @override
   Future<SecurityCheckResult> checkBackupEnabled() =>
       _invokeCheck('checkBackupEnabled', VulnerabilityType.backupEnabled);
 
   @override
-  Future<SecurityCheckResult> checkBiometricHandling() =>
-      _invokeCheck('checkBiometricHandling', VulnerabilityType.weakBiometricHandling);
+  Future<SecurityCheckResult> checkBiometricHandling() => _invokeCheck(
+    'checkBiometricHandling',
+    VulnerabilityType.weakBiometricHandling,
+  );
 
   @override
   Future<SecurityCheckResult> checkBiometricBypass() =>
@@ -88,12 +95,16 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
       _invokeCheck('checkScreenLock', VulnerabilityType.screenLockNotEnforced);
 
   @override
-  Future<SecurityCheckResult> checkScreenshotRestriction() =>
-      _invokeCheck('checkScreenshotRestriction', VulnerabilityType.screenshotNotRestricted);
+  Future<SecurityCheckResult> checkScreenshotRestriction() => _invokeCheck(
+    'checkScreenshotRestriction',
+    VulnerabilityType.screenshotNotRestricted,
+  );
 
   @override
-  Future<SecurityCheckResult> checkScreenRecording() =>
-      _invokeCheck('checkScreenRecording', VulnerabilityType.screenRecordingNotRestricted);
+  Future<SecurityCheckResult> checkScreenRecording() => _invokeCheck(
+    'checkScreenRecording',
+    VulnerabilityType.screenRecordingNotRestricted,
+  );
 
   @override
   Future<SecurityCheckResult> checkClipboard() =>
@@ -104,8 +115,10 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
       _invokeCheck('checkOverlayAttack', VulnerabilityType.overlayAttack);
 
   @override
-  Future<SecurityCheckResult> checkBackgroundDataExposure() =>
-      _invokeCheck('checkBackgroundDataExposure', VulnerabilityType.backgroundDataExposure);
+  Future<SecurityCheckResult> checkBackgroundDataExposure() => _invokeCheck(
+    'checkBackgroundDataExposure',
+    VulnerabilityType.backgroundDataExposure,
+  );
 
   @override
   Future<SecurityCheckResult> checkRecentApps() =>
@@ -120,8 +133,10 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
       _invokeCheck('checkIntentHijacking', VulnerabilityType.intentHijacking);
 
   @override
-  Future<SecurityCheckResult> checkBroadcastReceiver() =>
-      _invokeCheck('checkBroadcastReceiver', VulnerabilityType.broadcastReceiverExposure);
+  Future<SecurityCheckResult> checkBroadcastReceiver() => _invokeCheck(
+    'checkBroadcastReceiver',
+    VulnerabilityType.broadcastReceiverExposure,
+  );
 
   @override
   Future<SecurityCheckResult> checkDeepLink() =>
@@ -132,12 +147,16 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
       _invokeCheck('checkWebViewDebugging', VulnerabilityType.webViewDebugging);
 
   @override
-  Future<SecurityCheckResult> checkWebViewJavaScript() =>
-      _invokeCheck('checkWebViewJavaScript', VulnerabilityType.webViewJavaScriptAbuse);
+  Future<SecurityCheckResult> checkWebViewJavaScript() => _invokeCheck(
+    'checkWebViewJavaScript',
+    VulnerabilityType.webViewJavaScriptAbuse,
+  );
 
   @override
-  Future<SecurityCheckResult> checkRuntimePermissions() =>
-      _invokeCheck('checkRuntimePermissions', VulnerabilityType.runtimePermissionMissing);
+  Future<SecurityCheckResult> checkRuntimePermissions() => _invokeCheck(
+    'checkRuntimePermissions',
+    VulnerabilityType.runtimePermissionMissing,
+  );
 
   @override
   Future<SecurityCheckResult> checkAutofill() =>
