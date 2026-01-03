@@ -1,3 +1,6 @@
+![Logo](https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/image.jpg?raw=true)
+
+
 # Flutter Shield 🛡️
 
 A comprehensive device security and vulnerability detection package for Flutter applications on Android and iOS.
@@ -314,7 +317,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Security Disclosure
 
-If you discover a security vulnerability, please email security@example.com
+If you discover a security vulnerability, please email sanjaysharmajw@gmail.com
 
 ## Disclaimer
 
