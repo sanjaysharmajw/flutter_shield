@@ -1,6 +1,6 @@
 name: flutter_shield
 description: "A comprehensive device security and vulnerability detection package for Flutter applications on Android and iOS."
-version: 1.1.1
+version: 1.1.2
 homepage: https://github.com/sanjaysharmajw/flutter_shield.git
 documentation: https://pub.dev/documentation/flutter_shield/latest/
 

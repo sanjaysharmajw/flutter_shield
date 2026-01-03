@@ -1,7 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_shield/src/model/security_check_result.dart';
-import 'package:flutter_shield/src/model/vulnerability_type.dart';
 
 import '../flutter_shield.dart';
 

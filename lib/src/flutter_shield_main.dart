@@ -1,6 +1,4 @@
 import '../flutter_shield.dart';
-import 'flutter_shield_platform_interface.dart';
-import 'model/security_check_result.dart';
 
 /// Main Flutter Shield class for security checks
 class FlutterShield {
@@ -8,7 +6,7 @@ class FlutterShield {
 
   // Device Integrity Checks
 
-  /// Check if device is rooted (Android) or jailbroken (iOS)
+  /// Check if device is rooted (Android) or jail broken (iOS)
   static Future<SecurityCheckResult> checkRootedJailbroken() =>
       _platform.checkRootedJailbroken();
 
@@ -82,7 +80,7 @@ class FlutterShield {
   static Future<SecurityCheckResult> checkClipboard() =>
       _platform.checkClipboard();
 
-  /// Check for overlay attack (tapjacking) vulnerability
+  /// Check for overlay attack (tap jacking) vulnerability
   static Future<SecurityCheckResult> checkOverlayAttack() =>
       _platform.checkOverlayAttack();
 

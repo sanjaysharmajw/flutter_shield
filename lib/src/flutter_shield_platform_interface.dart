@@ -1,6 +1,5 @@
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import '../flutter_shield.dart';
-import 'flutter_shield_method_channel.dart';
 
 abstract class FlutterShieldPlatform extends PlatformInterface {
   FlutterShieldPlatform() : super(token: _token);
