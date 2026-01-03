@@ -5,7 +5,7 @@ homepage: https://github.com/sanjaysharmajw/flutter_shield.git
 documentation: https://pub.dev/documentation/flutter_shield/latest/
 
 environment:
-  sdk: ^3.8.1
+  sdk: ^3.9.0
   flutter: '>=3.3.0'
 
 dependencies:
