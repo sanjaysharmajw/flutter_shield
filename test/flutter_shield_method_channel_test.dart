@@ -1,11 +1,9 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_shield/src/flutter_shield_method_channel.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  MethodChannelFlutterShield platform = MethodChannelFlutterShield();
   const MethodChannel channel = MethodChannel('flutter_shield');
 
   setUp(() {

@@ -22,7 +22,9 @@ class SecurityCheckResult {
       ),
       isVulnerable: map['isVulnerable'] ?? false,
       message: map['message'] ?? '',
-      details: map['details'],
+      details: map['details'] != null
+          ? Map<String, dynamic>.from(map['details'] as Map)
+          : null,
     );
   }
 

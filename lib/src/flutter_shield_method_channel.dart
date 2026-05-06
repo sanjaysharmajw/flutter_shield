@@ -176,40 +176,39 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
 
   @override
   Future<SecurityReport> performFullSecurityCheck() async {
-    final results = <SecurityCheckResult>[];
-
-    // Perform all checks
-    results.add(await checkRootedJailbroken());
-    results.add(await checkDebuggable());
-    results.add(await checkUsbDebugging());
-    results.add(await checkEmulator());
-    results.add(await checkMalware());
-    results.add(await checkLocalStorage());
-    results.add(await checkPlaintextData());
-    results.add(await checkKeychainKeystore());
-    results.add(await checkFilePermissions());
-    results.add(await checkExternalStorage());
-    results.add(await checkBackupEnabled());
-    results.add(await checkBiometricHandling());
-    results.add(await checkBiometricBypass());
-    results.add(await checkScreenLock());
-    results.add(await checkScreenshotRestriction());
-    results.add(await checkScreenRecording());
-    results.add(await checkClipboard());
-    results.add(await checkOverlayAttack());
-    results.add(await checkBackgroundDataExposure());
-    results.add(await checkRecentApps());
-    results.add(await checkIPC());
-    results.add(await checkIntentHijacking());
-    results.add(await checkBroadcastReceiver());
-    results.add(await checkDeepLink());
-    results.add(await checkWebViewDebugging());
-    results.add(await checkWebViewJavaScript());
-    results.add(await checkRuntimePermissions());
-    results.add(await checkAutofill());
-    results.add(await checkSensorAbuse());
-    results.add(await checkDeviceTime());
-    results.add(await checkSideChannel());
+    final results = await Future.wait([
+      checkRootedJailbroken(),
+      checkDebuggable(),
+      checkUsbDebugging(),
+      checkEmulator(),
+      checkMalware(),
+      checkLocalStorage(),
+      checkPlaintextData(),
+      checkKeychainKeystore(),
+      checkFilePermissions(),
+      checkExternalStorage(),
+      checkBackupEnabled(),
+      checkBiometricHandling(),
+      checkBiometricBypass(),
+      checkScreenLock(),
+      checkScreenshotRestriction(),
+      checkScreenRecording(),
+      checkClipboard(),
+      checkOverlayAttack(),
+      checkBackgroundDataExposure(),
+      checkRecentApps(),
+      checkIPC(),
+      checkIntentHijacking(),
+      checkBroadcastReceiver(),
+      checkDeepLink(),
+      checkWebViewDebugging(),
+      checkWebViewJavaScript(),
+      checkRuntimePermissions(),
+      checkAutofill(),
+      checkSensorAbuse(),
+      checkDeviceTime(),
+      checkSideChannel(),
+    ]);
 
     final vulnerabilities = results.where((r) => r.isVulnerable).length;
 
