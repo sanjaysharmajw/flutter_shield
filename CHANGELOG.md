@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.5] - 2026-05-07
+
+### Added
+- **Multi-platform support** — Web, Windows, Linux, and macOS now declared as supported platforms via a pure-Dart stub (`FlutterShieldStub`); all 31 checks return `isVulnerable: false` with a "Not applicable on this platform." message on unsupported platforms, keeping `performFullSecurityCheck()` safe to call anywhere
+- **Swift Package Manager (SPM)** — Added `ios/Package.swift` so the plugin is recognised by Xcode's SPM integration, resolving the partial pub.dev score deduction for missing SPM support
+- **pub.dev platform score** — Platform support score improved from 10 / 20 (Android + iOS only) to 20 / 20 (all 6 platforms)
+
+### Fixed
+- **`FlutterShieldStub` not found at build time** — Exported `FlutterShieldStub` from the package's main library (`lib/flutter_shield.dart`) so Flutter's generated `dart_plugin_registrant.dart` can resolve the class during kernel compilation
+- **Corrupted Kotlin incremental cache** — Cleaned stale build artefacts that caused `Storage corrupted` errors and prevented the example app from launching on Android
+
+### Changed
+- **`pubspec.yaml` description** — Updated to reflect the new six-platform scope
+- **`pubspec.yaml` platform declarations** — Added `web`, `windows`, `linux`, `macos` entries each with `pluginClass: none`, `dartPluginClass: FlutterShieldStub`, and `fileName: src/flutter_shield_stub.dart`
+- **`ios/flutter_shield.podspec`** — Corrected placeholder values: version, summary, description, homepage, and author now match the published package
+- **Screenshots** — Replaced all old screenshots and the demo GIF with updated assets; Demo, Home Screen, and Scan Results displayed horizontally in the README
+
+---
+
 ## [1.1.4] - 2026-05-06
 
 ### Bug Fixes

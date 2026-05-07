@@ -4,14 +4,14 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'flutter_shield'
-  s.version          = '0.0.1'
-  s.summary          = 'A new Flutter plugin project.'
+  s.version          = '1.1.5'
+  s.summary          = 'A comprehensive device security and vulnerability detection package for Flutter.'
   s.description      = <<-DESC
-A new Flutter plugin project.
+Flutter Shield provides a unified API to detect 31 security vulnerabilities across Android and iOS — from root/jailbreak detection to WebView misconfigurations.
                        DESC
-  s.homepage         = 'http://example.com'
+  s.homepage         = 'https://github.com/sanjaysharmajw/flutter_shield'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'Your Company' => 'email@example.com' }
+  s.author           = { 'Sanjay Sharma' => 'sanjaysharmajw@gmail.com' }
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'

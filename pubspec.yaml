@@ -1,6 +1,6 @@
 name: flutter_shield
-description: "A comprehensive device security and vulnerability detection package for Flutter applications on Android and iOS."
-version: 1.1.4
+description: "A comprehensive device security and vulnerability detection package for Flutter — Android, iOS, Web, Windows, Linux, and macOS."
+version: 1.1.5
 homepage: https://github.com/sanjaysharmajw/flutter_shield.git
 documentation: https://pub.dev/documentation/flutter_shield/latest/
 
@@ -40,6 +40,22 @@ flutter:
         pluginClass: FlutterShieldPlugin
       ios:
         pluginClass: FlutterShieldPlugin
+      web:
+        pluginClass: none
+        dartPluginClass: FlutterShieldStub
+        fileName: src/flutter_shield_stub.dart
+      windows:
+        pluginClass: none
+        dartPluginClass: FlutterShieldStub
+        fileName: src/flutter_shield_stub.dart
+      linux:
+        pluginClass: none
+        dartPluginClass: FlutterShieldStub
+        fileName: src/flutter_shield_stub.dart
+      macos:
+        pluginClass: none
+        dartPluginClass: FlutterShieldStub
+        fileName: src/flutter_shield_stub.dart
 
   # To add assets to your plugin package, add an assets section, like this:
   # assets:
