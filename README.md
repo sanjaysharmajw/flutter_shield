@@ -23,25 +23,13 @@
 
 ---
 
-## Demo
-
-<div align="center">
-<img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/Screen_recording_20260102_220421.gif?raw=true" alt="Flutter Shield Demo" width="280"/>
-</div>
-
----
-
-## Screenshots
+## Demo & Screenshots
 
 <div align="center">
 
-| Home Screen | Scan Results | Quick Check |
-|:-----------:|:------------:|:-----------:|
-| <img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/Screenshot_20260102_220331.png?raw=true" width="200"/> | <img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/Screenshot_20260102_220344.png?raw=true" width="200"/> | <img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/Screenshot_20260102_220353.png?raw=true" width="200"/> |
-
-| iOS — Home | iOS — Results |
-|:----------:|:-------------:|
-| <img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/Simulator%20Screenshot%20-%20iPhone%2015%20-%202026-01-02%20at%2022.01.40.png?raw=true" width="220"/> | <img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/Simulator%20Screenshot%20-%20iPhone%2015%20-%202026-01-02%20at%2022.01.46.png?raw=true" width="220"/> |
+| Demo | Home Screen | Scan Results |
+|:----:|:-----------:|:------------:|
+| <img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/Screen_recording_20260507_103132.gif?raw=true" alt="Flutter Shield Demo" width="220"/> | <img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/Screenshot_20260507_103103.png?raw=true" width="220"/> | <img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/Screenshot_20260507_103117.png?raw=true" width="220"/> |
 
 </div>
 
