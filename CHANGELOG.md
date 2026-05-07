@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.6] - 2026-05-07
+
+### Fixed
+- **Demo GIF not rendering in README** — Compressed `Screen_recording_20260507_103132.gif` from 38 MB to 7.1 MB (81 % reduction) using resolution downscale (1080×2424 → 320×718), framerate reduction (25 fps → 10 fps), and 128-colour palette with Bayer dithering; file now falls within GitHub's 10 MB inline-display limit
+
+---
+
 ## [1.1.5] - 2026-05-07
 
 ### Added

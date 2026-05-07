@@ -179,7 +179,7 @@ class _HomeScreenState extends State<HomeScreen>
                 decoration: const BoxDecoration(color: _accent, shape: BoxShape.circle),
               ),
               const SizedBox(width: 6),
-              const Text('v1.1.5',
+              const Text('v1.1.6',
                   style: TextStyle(color: _accent, fontSize: 12, fontWeight: FontWeight.w600)),
             ]),
           ),

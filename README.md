@@ -79,7 +79,7 @@ Add Flutter Shield to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flutter_shield: ^1.1.5
+  flutter_shield: ^1.1.6
 ```
 
 Then fetch dependencies:
