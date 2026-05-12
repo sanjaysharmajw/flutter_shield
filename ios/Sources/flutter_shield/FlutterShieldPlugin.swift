@@ -140,7 +140,6 @@ class SecurityChecker {
   }
 
   func checkUSBDebugging() -> [String: Any] {
-    // iOS doesn't have USB debugging like Android
     return [
       "type": "usbDebugging",
       "isVulnerable": false,
@@ -163,7 +162,6 @@ class SecurityChecker {
   }
 
   func checkMalware() -> [String: Any] {
-    // Basic check - iOS sandboxing provides good protection
     return [
       "type": "malwareExposure",
       "isVulnerable": false,
@@ -218,7 +216,6 @@ class SecurityChecker {
   }
 
   func checkExternalStorage() -> [String: Any] {
-    // iOS doesn't have external storage like Android
     return [
       "type": "externalStorageSensitiveData",
       "isVulnerable": false,
@@ -227,7 +224,6 @@ class SecurityChecker {
   }
 
   func checkBackup() -> [String: Any] {
-    // Check if backup is excluded for sensitive files
     return [
       "type": "backupEnabled",
       "isVulnerable": false,
@@ -293,7 +289,6 @@ class SecurityChecker {
   }
 
   func checkOverlay() -> [String: Any] {
-    // iOS has better protection against overlay attacks
     return [
       "type": "overlayAttack",
       "isVulnerable": false,
@@ -326,7 +321,6 @@ class SecurityChecker {
   }
 
   func checkIntentHijacking() -> [String: Any] {
-    // Not applicable on iOS
     return [
       "type": "intentHijacking",
       "isVulnerable": false,
@@ -335,7 +329,6 @@ class SecurityChecker {
   }
 
   func checkBroadcastReceiver() -> [String: Any] {
-    // Not applicable on iOS
     return [
       "type": "broadcastReceiverExposure",
       "isVulnerable": false,
@@ -392,7 +385,6 @@ class SecurityChecker {
   }
 
   func checkDeviceTime() -> [String: Any] {
-    // Check if automatic time is enabled
     return [
       "type": "trustingDeviceTime",
       "isVulnerable": false,

@@ -7,13 +7,14 @@ let package = Package(
         .iOS(.v12),
     ],
     products: [
-        .library(name: "flutter_shield", targets: ["flutter_shield"]),
+        .library(name: "flutter_shield", targets: ["flutter_shield"])
     ],
+    dependencies: [],
     targets: [
         .target(
             name: "flutter_shield",
             dependencies: [],
-            path: "Classes"
-        ),
+            path: "Sources/flutter_shield"
+        )
     ]
 )

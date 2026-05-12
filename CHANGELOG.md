@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [1.1.9] - 2026-05-12
+## [1.1.10] - 2026-05-12
 
 ### Fixed
 
@@ -24,14 +24,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **`pubspec.yaml` — `dart pub publish` hard-blocked by caret SDK constraint**
   `sdk: ^3.8.1` uses the `^` shorthand which is not allowed for SDK constraints in `pub`. `dart pub publish` was failing with `^ version constraints aren't allowed for SDK constraints`. Changed to `sdk: ">=3.0.0 <4.0.0"`, which also broadens compatibility to all Dart 3.x users instead of requiring 3.8.1+.
 
-- **`pubspec.yaml` — `pluginClass: none` deprecation warning on every build (Flutter issue #57497)**
-  Web, Windows, Linux, and macOS platform entries had `pluginClass: none` alongside `dartPluginClass: FlutterShieldStub`. Flutter tooling treats this combination as a deprecated pattern and emitted `Use of dartPluginClass: none is deprecated` on every build. Removed `pluginClass: none` from all four entries — for pure-Dart platforms, `dartPluginClass` + `fileName` are sufficient; `pluginClass` should be omitted entirely when there is no native class.
-
 - **`FlutterShieldPlugin.kt` — deprecated `getSubjectDN()` replaced with `getSubjectX500Principal()`**
   `isSignedWithDebugKey()` used `cert.subjectDN.name` which is deprecated since Java 16 / Android 12. Replaced with `cert.subjectX500Principal.name`, the current recommended API. Both return the same RFC 2253 DN string so the `"Android Debug"` detection result is identical.
 
 - **`ios/flutter_shield.podspec` — version kept in sync with pubspec**
-  Podspec version updated to `1.1.8` to match `pubspec.yaml`, preventing a pub.dev score deduction for version mismatch.
+  Podspec version updated to `1.1.9` to match `pubspec.yaml`, preventing a pub.dev score deduction for version mismatch.
+
+- **iOS Swift Package Manager (SPM) — source migrated to canonical `Sources/` layout**
+  `ios/Classes/FlutterShieldPlugin.swift` moved to `ios/Sources/flutter_shield/FlutterShieldPlugin.swift`. `ios/Package.swift` path updated from `"Classes"` to `"Sources/flutter_shield"` and `ios/flutter_shield.podspec` source files updated to `Sources/flutter_shield/**/*.swift`. This matches the canonical SPM directory structure that Flutter's own plugin template generates and that pub.dev's pana tool requires to award the Swift Package Manager support score (resolves the 10/20 → 20/20 platform support deduction).
 
 ### Added
 
