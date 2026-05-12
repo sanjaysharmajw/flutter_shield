@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.8] - 2026-05-11
+
+### Fixed
+
+- **`checkDebuggable()` — Release APK not detected when signed with debug certificate**
+  Previously, `checkDebuggable()` only checked the `FLAG_DEBUGGABLE` manifest flag. A release APK built with `flutter build apk --release` has this flag unset (`0`), so it was incorrectly reported as **PASS** even when the APK was signed with the Android debug keystore. Added `isSignedWithDebugKey()` helper that reads the APK's signing certificate via `PackageManager.GET_SIGNING_CERTIFICATES` (API 28+) / `GET_SIGNATURES` (API < 28) and checks whether the certificate subject DN contains `"Android Debug"`. `checkDebuggable()` now returns `isVulnerable: true` if either the debuggable flag **or** the debug signing is detected.
+
+- **`checkLocalStorage()` — False positive on every Flutter app**
+  The check flagged the `shared_prefs` directory as insecure if it contained any files at all. Because the Flutter engine and common SDKs (Firebase, Google Play Services) always write their own SharedPreferences files at startup, this caused every Flutter app to report a storage vulnerability regardless of app-level behaviour. The check now ignores known framework-created prefixes (`FlutterSharedPreferences`, `com.google.`, `firebase.`, `io.flutter.`) and only flags app-specific preference files.
+
+- **`checkExternalStorage()` — False positive on every app with a cache directory**
+  Previously any file present in the app's external files directory triggered a vulnerability. This produced false positives from harmless media cache or temp files. The check now only flags files with sensitive extensions: `db`, `sqlite`, `sqlite3`, `key`, `pem`, `p12`, `jks`, `json`, `xml`, `txt`.
+
+- **`_invokeCheck()` — Silent failure masked broken checks as secure**
+  When a native method channel call threw an exception, the catch block returned `isVulnerable: false`, making a failed or unavailable check indistinguishable from a genuinely secure result. `MissingPluginException` is now handled separately (returns "not supported on this platform") and all other exceptions surface a clear `"Check unavailable: ..."` message so users can distinguish a failed check from a true PASS.
+
+### Added
+
+- `isSignedWithDebugKey()` private helper in `SecurityChecker` — reads the APK signing certificate and compares the subject DN against the well-known Android debug keystore identity (`CN=Android Debug`). Handles both the modern `SigningInfo` API (Android 9+) and the legacy `signatures` field.
+
+---
+
 ## [1.1.6] - 2026-05-07
 
 ### Fixed

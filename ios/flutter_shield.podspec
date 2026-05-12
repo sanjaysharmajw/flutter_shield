@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'flutter_shield'
-  s.version          = '1.1.6'
+  s.version          = '1.1.7'
   s.summary          = 'A comprehensive device security and vulnerability detection package for Flutter.'
   s.description      = <<-DESC
 Flutter Shield provides a unified API to detect 31 security vulnerabilities across Android and iOS — from root/jailbreak detection to WebView misconfigurations.

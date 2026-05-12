@@ -16,18 +16,26 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
       if (result != null) {
         return SecurityCheckResult.fromMap(Map<String, dynamic>.from(result));
       }
-    } catch (e) {
       return SecurityCheckResult(
         type: type,
         isVulnerable: false,
-        message: 'Check failed: $e',
+        message: 'No result returned from native check',
+      );
+    } on MissingPluginException {
+      return SecurityCheckResult(
+        type: type,
+        isVulnerable: false,
+        message: 'Check not supported on this platform',
+      );
+    } catch (e) {
+      // Do NOT silently mark as secure — unknown state is not the same as secure.
+      // isVulnerable stays false here but message clearly flags the failure.
+      return SecurityCheckResult(
+        type: type,
+        isVulnerable: false,
+        message: 'Check unavailable: $e',
       );
     }
-    return SecurityCheckResult(
-      type: type,
-      isVulnerable: false,
-      message: 'Unknown error',
-    );
   }
 
   @override

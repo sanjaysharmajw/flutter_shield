@@ -2,16 +2,19 @@ package com.example.flutter_shield
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
-import android.view.WindowManager
 import androidx.annotation.NonNull
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
 
 class FlutterShieldPlugin: FlutterPlugin, MethodCallHandler {
   private lateinit var channel: MethodChannel
@@ -114,11 +117,46 @@ class SecurityChecker(private val context: Context) {
 
   fun checkDebuggable(): Map<String, Any> {
     val isDebuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    val isDebugSigned = isSignedWithDebugKey()
+    val isVulnerable = isDebuggable || isDebugSigned
+
+    val message = when {
+      isDebuggable && isDebugSigned -> "App is debuggable and signed with debug certificate (release APK not detected)"
+      isDebuggable -> "App is debuggable"
+      isDebugSigned -> "Release APK is signed with debug certificate — proper release signing required"
+      else -> "App is not debuggable and is signed with a release certificate"
+    }
+
     return mapOf(
       "type" to "debuggableApp",
-      "isVulnerable" to isDebuggable,
-      "message" to if (isDebuggable) "App is debuggable" else "App is not debuggable"
+      "isVulnerable" to isVulnerable,
+      "message" to message
     )
+  }
+
+  private fun isSignedWithDebugKey(): Boolean {
+    return try {
+      val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        context.packageManager.getPackageInfo(
+          context.packageName,
+          PackageManager.GET_SIGNING_CERTIFICATES
+        ).signingInfo?.apkContentsSigners
+      } else {
+        @Suppress("DEPRECATION")
+        context.packageManager.getPackageInfo(
+          context.packageName,
+          PackageManager.GET_SIGNATURES
+        ).signatures
+      }
+      signatures?.any { signature ->
+        val cert = CertificateFactory.getInstance("X.509")
+          .generateCertificate(ByteArrayInputStream(signature.toByteArray())) as X509Certificate
+        val dn = cert.subjectX500Principal.name
+        dn.contains("Android Debug", ignoreCase = true)
+      } ?: false
+    } catch (e: Exception) {
+      false
+    }
   }
 
   fun checkUsbDebugging(): Map<String, Any> {
@@ -172,12 +210,26 @@ class SecurityChecker(private val context: Context) {
 
   fun checkLocalStorage(): Map<String, Any> {
     val sharedPrefsDir = File(context.applicationInfo.dataDir + "/shared_prefs")
-    val hasUnencryptedPrefs = sharedPrefsDir.exists() && sharedPrefsDir.listFiles()?.isNotEmpty() == true
+    // Only flag if there are non-framework prefs files — Flutter/system prefs are expected.
+    // Known framework-created prefs that are not app-sensitive:
+    val frameworkPrefsPrefixes = listOf(
+      "FlutterSharedPreferences",
+      "com.google.",
+      "firebase.",
+      "io.flutter.",
+    )
+    val files = sharedPrefsDir.listFiles() ?: emptyArray()
+    val hasSensitivePrefs = files.any { file ->
+      frameworkPrefsPrefixes.none { prefix -> file.name.startsWith(prefix) }
+    }
 
     return mapOf(
       "type" to "insecureLocalStorage",
-      "isVulnerable" to hasUnencryptedPrefs,
-      "message" to if (hasUnencryptedPrefs) "Unencrypted SharedPreferences found" else "Storage appears secure"
+      "isVulnerable" to hasSensitivePrefs,
+      "message" to if (hasSensitivePrefs)
+        "App-specific unencrypted SharedPreferences found — consider using EncryptedSharedPreferences"
+      else
+        "No app-specific unencrypted SharedPreferences detected"
     )
   }
 
@@ -219,12 +271,19 @@ class SecurityChecker(private val context: Context) {
 
   fun checkExternalStorage(): Map<String, Any> {
     val externalFilesDir = context.getExternalFilesDir(null)
-    val hasExternalFiles = externalFilesDir?.listFiles()?.isNotEmpty() ?: false
+    // Only flag if sensitive file types exist — plain existence of the directory is not a risk.
+    val sensitiveExtensions = setOf("db", "sqlite", "sqlite3", "key", "pem", "p12", "jks", "json", "xml", "txt")
+    val hasSensitiveFiles = externalFilesDir?.walkTopDown()?.any { file ->
+      file.isFile && file.extension.lowercase() in sensitiveExtensions
+    } ?: false
 
     return mapOf(
       "type" to "externalStorageSensitiveData",
-      "isVulnerable" to hasExternalFiles,
-      "message" to if (hasExternalFiles) "Files in external storage detected" else "No external storage usage"
+      "isVulnerable" to hasSensitiveFiles,
+      "message" to if (hasSensitiveFiles)
+        "Potentially sensitive files (db/key/config) found in external storage"
+      else
+        "No sensitive file types detected in external storage"
     )
   }
 

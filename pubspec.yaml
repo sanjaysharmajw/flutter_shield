@@ -1,11 +1,11 @@
 name: flutter_shield
 description: "A comprehensive device security and vulnerability detection package for Flutter — Android, iOS, Web, Windows, Linux, and macOS."
-version: 1.1.6
+version: 1.1.8
 homepage: https://github.com/sanjaysharmajw/flutter_shield.git
 documentation: https://pub.dev/documentation/flutter_shield/latest/
 
 environment:
-  sdk: ^3.8.1
+  sdk: ">=3.0.0 <4.0.0"
   flutter: '>=3.3.0'
 
 dependencies:
