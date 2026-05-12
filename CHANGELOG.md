@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [1.1.8] - 2026-05-11
+## [1.1.9] - 2026-05-12
 
 ### Fixed
 
@@ -20,6 +20,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **`_invokeCheck()` — Silent failure masked broken checks as secure**
   When a native method channel call threw an exception, the catch block returned `isVulnerable: false`, making a failed or unavailable check indistinguishable from a genuinely secure result. `MissingPluginException` is now handled separately (returns "not supported on this platform") and all other exceptions surface a clear `"Check unavailable: ..."` message so users can distinguish a failed check from a true PASS.
+
+- **`pubspec.yaml` — `dart pub publish` hard-blocked by caret SDK constraint**
+  `sdk: ^3.8.1` uses the `^` shorthand which is not allowed for SDK constraints in `pub`. `dart pub publish` was failing with `^ version constraints aren't allowed for SDK constraints`. Changed to `sdk: ">=3.0.0 <4.0.0"`, which also broadens compatibility to all Dart 3.x users instead of requiring 3.8.1+.
+
+- **`pubspec.yaml` — `pluginClass: none` deprecation warning on every build (Flutter issue #57497)**
+  Web, Windows, Linux, and macOS platform entries had `pluginClass: none` alongside `dartPluginClass: FlutterShieldStub`. Flutter tooling treats this combination as a deprecated pattern and emitted `Use of dartPluginClass: none is deprecated` on every build. Removed `pluginClass: none` from all four entries — for pure-Dart platforms, `dartPluginClass` + `fileName` are sufficient; `pluginClass` should be omitted entirely when there is no native class.
+
+- **`FlutterShieldPlugin.kt` — deprecated `getSubjectDN()` replaced with `getSubjectX500Principal()`**
+  `isSignedWithDebugKey()` used `cert.subjectDN.name` which is deprecated since Java 16 / Android 12. Replaced with `cert.subjectX500Principal.name`, the current recommended API. Both return the same RFC 2253 DN string so the `"Android Debug"` detection result is identical.
+
+- **`ios/flutter_shield.podspec` — version kept in sync with pubspec**
+  Podspec version updated to `1.1.8` to match `pubspec.yaml`, preventing a pub.dev score deduction for version mismatch.
 
 ### Added
 
