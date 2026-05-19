@@ -5,6 +5,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.0] - 2026-05-19
+
+### Added
+
+- **Magisk Detection — 7-vector root check (`checkRootedJailbroken()`)**
+  Previous implementation used only 3 basic checks (`Build.TAGS`, su binary paths, `which su`) which Magisk + MagiskHide/Shamiko bypasses trivially. Root detection now runs 7 independent vectors:
+  1. `test-keys` build tag
+  2. Standard `su` binary paths (`/sbin/su`, `/system/xbin/su`, etc.)
+  3. `which su` command execution
+  4. **Magisk-specific paths** — `/data/adb/magisk`, `/data/adb/modules`, `/sbin/.magisk`, `/sbin/.core/mirror`, `/dev/magisk`, etc.
+  5. **Root management packages** — Magisk Manager (`com.topjohnwu.magisk`), Magisk Delta (`io.github.huskydg.magisk`), SuperSU, KingRoot, KingoRoot, and 10+ others
+  6. **Dangerous system properties** — `ro.debuggable=1`, `ro.secure=0`, `ro.build.selinux=0` via `getprop`
+  7. **Writable system partitions** — `/system`, `/system/bin`, `/vendor/bin`, `/sbin`, etc.
+  Result message now includes which specific vectors triggered, e.g. `"Device is rooted: Magisk files detected, root management app installed"`.
+
+- **Play Integrity API (`checkPlayIntegrity()`)** — New method that requests a signed integrity token from Google Play. Returns `isVulnerable: false` with the token in `result.details['token']` and nonce in `result.details['nonce']`. Token must be forwarded to your backend and verified via the Google Play Integrity API for a full device/app verdict. Returns `isVulnerable: true` if the token request fails (e.g. no Google Play Services). Android only.
+
+- **Firebase App Check (`checkFirebaseAppCheck()`)** — New method that verifies device and app integrity using Firebase App Check. Uses **Play Integrity** provider on Android and **App Attest / DeviceCheck** on iOS. No custom backend required — Firebase handles server-side verification automatically. Returns `isVulnerable: false` when attestation passes, `true` when it fails. Requires `Firebase.initializeApp()` and `FirebaseAppCheck.instance.activate()` before calling. This is the recommended check for defeating Magisk + Shamiko completely.
+
+- **New `VulnerabilityType` values**
+  - `playIntegrityFailed` — Play Integrity token request failed or unavailable
+  - `firebaseAppCheckFailed` — Firebase App Check attestation failed
+
+- **New dependencies**
+  - `firebase_core: ^3.13.0`
+  - `firebase_app_check: ^0.3.2`
+
+### Changed
+
+- **`FlutterShieldPlugin.kt`** — Added `CoroutineScope(SupervisorJob() + Dispatchers.Main)` to handle the async Play Integrity token request without blocking the method channel thread. Scope is cancelled in `onDetachedFromEngine()` to prevent leaks.
+- **`android/build.gradle`** — Added `com.google.android.play:integrity:1.4.0`, `kotlinx-coroutines-android:1.7.3`, and `kotlinx-coroutines-play-services:1.7.3` dependencies.
+- **`performFullSecurityCheck()`** — Now includes `checkPlayIntegrity()` (33 total checks). `checkFirebaseAppCheck()` is intentionally excluded because it requires Firebase initialization.
+- **README** — Updated check count (31 → 33+), added Firebase App Check Setup section, new App Attestation API reference table, updated Security Categories tree and Platform Differences table.
+
+---
+
 ## [1.1.10] - 2026-05-12
 
 ### Fixed

@@ -183,6 +183,10 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
       _invokeCheck('checkSideChannel', VulnerabilityType.sideChannelAttacks);
 
   @override
+  Future<SecurityCheckResult> checkPlayIntegrity() =>
+      _invokeCheck('checkPlayIntegrity', VulnerabilityType.playIntegrityFailed);
+
+  @override
   Future<SecurityReport> performFullSecurityCheck() async {
     final results = await Future.wait([
       checkRootedJailbroken(),
@@ -216,6 +220,7 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
       checkSensorAbuse(),
       checkDeviceTime(),
       checkSideChannel(),
+      checkPlayIntegrity(),
     ]);
 
     final vulnerabilities = results.where((r) => r.isVulnerable).length;

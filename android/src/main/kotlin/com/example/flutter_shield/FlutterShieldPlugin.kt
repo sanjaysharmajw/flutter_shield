@@ -5,21 +5,33 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
+import android.util.Base64
 import androidx.annotation.NonNull
+import com.google.android.play.core.integrity.IntegrityManagerFactory
+import com.google.android.play.core.integrity.IntegrityTokenRequest
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
+import java.util.UUID
 
 class FlutterShieldPlugin: FlutterPlugin, MethodCallHandler {
   private lateinit var channel: MethodChannel
   private lateinit var context: Context
   private lateinit var securityChecker: SecurityChecker
+  private val pluginScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     channel = MethodChannel(flutterPluginBinding.binaryMessenger, "flutter_shield")
@@ -61,32 +73,51 @@ class FlutterShieldPlugin: FlutterPlugin, MethodCallHandler {
       "checkSensorAbuse" -> result.success(securityChecker.checkSensors())
       "checkDeviceTime" -> result.success(securityChecker.checkDeviceTime())
       "checkSideChannel" -> result.success(securityChecker.checkSideChannel())
+      "checkPlayIntegrity" -> {
+        pluginScope.launch {
+          val checkResult = withContext(Dispatchers.IO) {
+            securityChecker.checkPlayIntegrity()
+          }
+          result.success(checkResult)
+        }
+      }
       else -> result.notImplemented()
     }
   }
 
   override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
     channel.setMethodCallHandler(null)
+    pluginScope.cancel()
   }
 }
 
 class SecurityChecker(private val context: Context) {
 
   fun checkRoot(): Map<String, Any> {
-    val isRooted = checkRootMethod1() || checkRootMethod2() || checkRootMethod3()
+    val detectedVectors = mutableListOf<String>()
+
+    if (checkTestKeys()) detectedVectors.add("test-keys build")
+    if (checkSuPaths()) detectedVectors.add("su binary found")
+    if (checkSuCommand()) detectedVectors.add("su command accessible")
+    if (checkMagiskPaths()) detectedVectors.add("Magisk files detected")
+    if (checkRootPackages()) detectedVectors.add("root management app installed")
+    if (checkDangerousProps()) detectedVectors.add("dangerous system properties")
+    if (checkWritableSystemPaths()) detectedVectors.add("system partition writable")
+
+    val isRooted = detectedVectors.isNotEmpty()
     return mapOf(
       "type" to "rootedJailbroken",
       "isVulnerable" to isRooted,
-      "message" to if (isRooted) "Device is rooted" else "Device is not rooted"
+      "message" to if (isRooted) "Device is rooted: ${detectedVectors.joinToString()}" else "Device is not rooted"
     )
   }
 
-  private fun checkRootMethod1(): Boolean {
+  private fun checkTestKeys(): Boolean {
     val buildTags = Build.TAGS
     return buildTags != null && buildTags.contains("test-keys")
   }
 
-  private fun checkRootMethod2(): Boolean {
+  private fun checkSuPaths(): Boolean {
     val paths = arrayOf(
       "/system/app/Superuser.apk",
       "/sbin/su",
@@ -97,21 +128,98 @@ class SecurityChecker(private val context: Context) {
       "/system/sd/xbin/su",
       "/system/bin/failsafe/su",
       "/data/local/su",
-      "/su/bin/su"
+      "/su/bin/su",
+      "/system/xbin/mu"
     )
     return paths.any { File(it).exists() }
   }
 
-  private fun checkRootMethod3(): Boolean {
+  private fun checkSuCommand(): Boolean {
     var process: Process? = null
     return try {
       process = Runtime.getRuntime().exec(arrayOf("/system/xbin/which", "su"))
-      val `in` = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
-      `in`.readLine() != null
+      val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
+      reader.readLine() != null
     } catch (t: Throwable) {
       false
     } finally {
       process?.destroy()
+    }
+  }
+
+  // Magisk-specific detection
+  private fun checkMagiskPaths(): Boolean {
+    val magiskPaths = arrayOf(
+      "/sbin/.magisk",
+      "/sbin/.core/mirror",
+      "/sbin/.core/img",
+      "/sbin/.core/db-0/magisk.db",
+      "/data/adb/magisk",
+      "/data/adb/magisk.db",
+      "/data/adb/modules",
+      "/cache/.disable_magisk",
+      "/dev/magisk",
+      "/system/xbin/ku.sud"
+    )
+    return magiskPaths.any { File(it).exists() }
+  }
+
+  // Check for root manager packages (Magisk Manager, SuperSU, KingRoot, etc.)
+  private fun checkRootPackages(): Boolean {
+    val rootPackages = listOf(
+      "com.topjohnwu.magisk",          // Magisk Manager
+      "io.github.huskydg.magisk",      // Magisk Delta
+      "com.noshufou.android.su",       // SuperUser
+      "com.noshufou.android.su.elite", // SuperUser Elite
+      "eu.chainfire.supersu",          // SuperSU
+      "com.koushikdutta.superuser",    // Superuser
+      "com.thirdparty.superuser",
+      "com.yellowes.su",
+      "com.kingroot.kinguser",         // KingRoot
+      "com.kingo.root",               // KingoRoot
+      "com.smedialink.oneclickroot",
+      "com.zhiqupk.root.global",
+      "com.alephzain.framaroot",
+      "com.zachspong.temprootremovejb",
+      "com.ramdroid.appquarantine",
+      "com.topjohnwu.magisk.stub"
+    )
+    val pm = context.packageManager
+    return rootPackages.any { pkg ->
+      try { pm.getPackageInfo(pkg, 0); true } catch (e: Exception) { false }
+    }
+  }
+
+  // Check dangerous ro properties that indicate rooted/modified system
+  private fun checkDangerousProps(): Boolean {
+    val dangerousProps = mapOf(
+      "ro.debuggable" to "1",
+      "ro.secure" to "0",
+      "ro.build.selinux" to "0"
+    )
+    return dangerousProps.any { (prop, dangerousValue) ->
+      try {
+        val process = Runtime.getRuntime().exec(arrayOf("getprop", prop))
+        val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
+        val value = reader.readLine()?.trim()
+        process.destroy()
+        value == dangerousValue
+      } catch (e: Exception) {
+        false
+      }
+    }
+  }
+
+  // Check if /system or /data is writable (indicates root)
+  private fun checkWritableSystemPaths(): Boolean {
+    val systemPaths = arrayOf("/system", "/system/bin", "/system/sbin", "/system/xbin", "/vendor/bin", "/sbin", "/etc")
+    return systemPaths.any { path ->
+      try {
+        val file = File(path)
+        file.exists() && file.canWrite()
+      } catch (e: Exception) {
+        false
+      }
     }
   }
 
@@ -462,5 +570,36 @@ class SecurityChecker(private val context: Context) {
       "isVulnerable" to false,
       "message" to "Side-channel attack prevention requires specific implementation"
     )
+  }
+
+  suspend fun checkPlayIntegrity(): Map<String, Any> {
+    return try {
+      val nonce = Base64.encodeToString(
+        UUID.randomUUID().toString().toByteArray(Charsets.UTF_8),
+        Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+      )
+      val integrityManager = IntegrityManagerFactory.create(context)
+      val tokenResponse = integrityManager
+        .requestIntegrityToken(IntegrityTokenRequest.builder().setNonce(nonce).build())
+        .await()
+
+      mapOf(
+        "type" to "playIntegrityFailed",
+        "isVulnerable" to false,
+        "message" to "Play Integrity token obtained. Send token to your server for full verdict verification.",
+        "details" to mapOf(
+          "token" to tokenResponse.token(),
+          "nonce" to nonce
+        )
+      )
+    } catch (e: Exception) {
+      // Token request failed — treat as vulnerable since we cannot attest the device
+      mapOf(
+        "type" to "playIntegrityFailed",
+        "isVulnerable" to true,
+        "message" to "Play Integrity check failed: ${e.message}",
+        "details" to mapOf("error" to (e.message ?: "Unknown error"))
+      )
+    }
   }
 }

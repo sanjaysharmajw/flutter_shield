@@ -12,6 +12,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/platform-android%20%7C%20ios-lightgrey.svg)](https://flutter.dev)
 [![Flutter](https://img.shields.io/badge/Flutter-%3E%3D3.3.0-02569B.svg?logo=flutter)](https://flutter.dev)
+[![Firebase](https://img.shields.io/badge/Firebase-App%20Check-orange.svg?logo=firebase)](https://firebase.google.com/docs/app-check)
 
 </div>
 
@@ -19,7 +20,7 @@
 
 ## Overview
 
-**Flutter Shield** gives you a single, unified API to detect 31 security vulnerabilities across Android and iOS — from root/jailbreak detection to WebView misconfigurations. Run a full scan in one call or cherry-pick individual checks for targeted enforcement.
+**Flutter Shield** gives you a single, unified API to detect **33+ security vulnerabilities** across Android and iOS — from root/jailbreak and Magisk detection to Firebase App Check attestation. Run a full scan in one call or cherry-pick individual checks for targeted enforcement.
 
 ---
 
@@ -40,10 +41,12 @@
 - [Features](#features)
 - [Installation](#installation)
 - [Platform Setup](#platform-setup)
+- [Firebase App Check Setup](#firebase-app-check-setup)
 - [Quick Start](#quick-start)
 - [Usage](#usage)
   - [Full Security Scan](#full-security-scan)
   - [Individual Checks](#individual-checks)
+  - [Firebase App Check](#firebase-app-check)
   - [Handling Results](#handling-results)
   - [Conditional Feature Gating](#conditional-feature-gating)
 - [API Reference](#api-reference)
@@ -58,11 +61,11 @@
 
 ## Features
 
-Flutter Shield covers **31 security checks** across 7 categories — all returned as typed, structured results.
+Flutter Shield covers **33+ security checks** across 8 categories — all returned as typed, structured results.
 
 | Category | Checks | Description |
 |---|:---:|---|
-| 🔒 Device Integrity | 5 | Root, jailbreak, emulator, debug, malware |
+| 🔒 Device Integrity | 5 | Root, jailbreak, Magisk, emulator, debug, malware |
 | 🗄️ Storage Security | 6 | Local storage, plaintext, keychain, file permissions |
 | 🔑 Authentication | 3 | Biometrics, bypass, screen lock |
 | 🖥️ UI Security | 6 | Screenshot, recording, clipboard, overlay, background |
@@ -70,6 +73,7 @@ Flutter Shield covers **31 security checks** across 7 categories — all returne
 | 🌐 WebView | 2 | Debugging, JavaScript interface |
 | ⚙️ Permissions & Runtime | 3 | Runtime permissions, autofill, sensor abuse |
 | 🔬 Other | 2 | Device time trust, side-channel attacks |
+| 🛡️ App Attestation | 2 | Play Integrity API token, Firebase App Check |
 
 ---
 
@@ -79,7 +83,7 @@ Add Flutter Shield to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flutter_shield: ^1.1.10
+  flutter_shield: ^1.2.0
 ```
 
 Then fetch dependencies:
@@ -125,6 +129,62 @@ If your app uses sensor-related checks, add the required usage descriptions to `
 <key>NSLocationWhenInUseUsageDescription</key>
 <string>Required for sensor security checks</string>
 ```
+
+---
+
+## Firebase App Check Setup
+
+Firebase App Check provides the strongest device attestation — it defeats Magisk + Shamiko by verifying integrity server-side via Google. No custom backend is required.
+
+### Step 1 — Create Firebase Project
+
+1. Go to [console.firebase.google.com](https://console.firebase.google.com)
+2. Create a project → Add an **Android app** with your package name
+3. Download `google-services.json` → place it in `android/app/`
+4. For iOS: download `GoogleService-Info.plist` → place it in `ios/Runner/`
+
+### Step 2 — Enable App Check
+
+Firebase Console → Build → **App Check** → Register your app:
+- **Android** → Select **Play Integrity**
+- **iOS** → Select **App Attest** (or DeviceCheck for older devices)
+
+### Step 3 — Add `google-services` plugin
+
+In `android/build.gradle`:
+```gradle
+dependencies {
+  classpath 'com.google.gms:google-services:4.4.2'
+}
+```
+
+In `android/app/build.gradle`:
+```gradle
+apply plugin: 'com.google.gms.google-services'
+```
+
+### Step 4 — Initialize in `main.dart`
+
+```dart
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp();
+
+  await FirebaseAppCheck.instance.activate(
+    androidProvider: AndroidProvider.playIntegrity, // production
+    // androidProvider: AndroidProvider.debug,      // testing only
+    appleProvider: AppleProvider.appAttest,         // iOS
+  );
+
+  runApp(const MyApp());
+}
+```
+
+> **Note:** Firebase App Check is optional. All other Flutter Shield checks work independently without Firebase.
 
 ---
 
@@ -201,6 +261,50 @@ final webViewDebugCheck = await FlutterShield.checkWebViewDebugging();
 
 if (rootCheck.isVulnerable) {
   print('🚨 Device is rooted/jailbroken: ${rootCheck.message}');
+}
+```
+
+### Firebase App Check
+
+The strongest check — verifies both app and device integrity via Google's servers. Defeats Magisk + Shamiko.
+
+```dart
+// Requires Firebase.initializeApp() + FirebaseAppCheck.activate() first
+final appCheckResult = await FlutterShield.checkFirebaseAppCheck();
+
+if (appCheckResult.isVulnerable) {
+  // Device or app failed attestation — block access
+  showSecurityBlockedScreen();
+} else {
+  print('App Check passed: ${appCheckResult.message}');
+}
+```
+
+Combined with root detection for maximum coverage:
+
+```dart
+Future<bool> isDeviceTrusted() async {
+  final results = await Future.wait([
+    FlutterShield.checkRootedJailbroken(),
+    FlutterShield.checkEmulator(),
+    FlutterShield.checkFirebaseAppCheck(),
+  ]);
+  return results.every((r) => !r.isVulnerable);
+}
+```
+
+### Play Integrity Token (Manual Server Verification)
+
+If you want to verify the token on your own backend instead of using Firebase:
+
+```dart
+final result = await FlutterShield.checkPlayIntegrity();
+
+if (!result.isVulnerable) {
+  final token = result.details?['token'] as String?;
+  final nonce = result.details?['nonce'] as String?;
+  // Send token to your server for verification
+  await yourBackend.verifyIntegrityToken(token!, nonce!);
 }
 ```
 
@@ -342,12 +446,21 @@ All methods are static and return `Future<SecurityCheckResult>` unless otherwise
 | `checkDeviceTime()` | Checks if device uses automatic network time | Android |
 | `checkSideChannel()` | Checks for side-channel attack exposure | Both |
 
+#### App Attestation
+
+| Method | Description | Platform |
+|---|---|:---:|
+| `checkPlayIntegrity()` | Requests a Play Integrity token. Returns token in `details['token']` for server-side verification via Google Play Integrity API. Defeats Magisk/Shamiko when verified server-side. | Android |
+| `checkFirebaseAppCheck()` | Verifies device and app integrity via Firebase App Check (Play Integrity on Android, App Attest on iOS). No custom backend needed — Firebase handles verification. Requires `Firebase.initializeApp()` and `FirebaseAppCheck.activate()`. | Both |
+
 #### Comprehensive Check
 
 ```dart
-// Returns Future<SecurityReport>
+// Returns Future<SecurityReport> — includes all 33 checks including Play Integrity
 final report = await FlutterShield.performFullSecurityCheck();
 ```
+
+> **Note:** `checkFirebaseAppCheck()` is NOT included in `performFullSecurityCheck()` because it requires Firebase to be initialized first. Call it separately after `FirebaseAppCheck.activate()`.
 
 ---
 
@@ -398,6 +511,9 @@ enum VulnerabilityType {
   runtimePermissionMissing, insecureAutofill, sensorAbuse,
   // Other
   trustingDeviceTime, sideChannelAttacks,
+  // App Attestation
+  playIntegrityFailed,      // Play Integrity token request failed
+  firebaseAppCheckFailed,   // Firebase App Check attestation failed
   unknown,
 }
 ```
@@ -407,11 +523,13 @@ enum VulnerabilityType {
 ## Security Categories
 
 ```
-Flutter Shield — 31 Checks
+Flutter Shield — 33 Checks
 │
 ├── 🔒 Device Integrity (5)
-│   ├── Root / Jailbreak detection     [multi-method]
-│   ├── Debuggable app flag
+│   ├── Root / Jailbreak detection     [7 vectors: su paths, test-keys,
+│   │                                   Magisk paths, root packages,
+│   │                                   dangerous props, writable /system]
+│   ├── Debuggable app flag + debug signing cert
 │   ├── USB debugging status           [Android]
 │   ├── Emulator / Simulator
 │   └── Malware / suspicious apps      [Android]
@@ -452,9 +570,13 @@ Flutter Shield — 31 Checks
 │   ├── Autofill security
 │   └── Sensor abuse (Camera/Mic/GPS)
 │
-└── 🔬 Other (2)
-    ├── Device time trust (Auto time)   [Android]
-    └── Side-channel attack exposure
+├── 🔬 Other (2)
+│   ├── Device time trust (Auto time)  [Android]
+│   └── Side-channel attack exposure
+│
+└── 🛡️ App Attestation (2)
+    ├── Play Integrity API token       [Android — verify server-side]
+    └── Firebase App Check             [Android + iOS — no server needed]
 ```
 
 ---
@@ -507,7 +629,7 @@ Rather than silently blocking, show clear explanations so users understand the r
 
 | Check | Android | iOS |
 |---|:---:|:---:|
-| Root / Jailbreak | ✅ su binaries, build tags | ✅ Cydia paths, DYLD |
+| Root / Jailbreak | ✅ su binaries, Magisk paths, root packages, build tags | ✅ Cydia paths, DYLD |
 | USB Debugging | ✅ ADB setting | ➖ N/A |
 | External Storage | ✅ | ➖ Sandboxed |
 | Intent Hijacking | ✅ | ➖ N/A |
@@ -516,6 +638,8 @@ Rather than silently blocking, show clear explanations so users understand the r
 | Screen Recording | ✅ Guided | ✅ `UIScreen.isCaptured` |
 | Device Time | ✅ Auto-time setting | ➖ Server-side only |
 | Overlay Attack | ✅ | ✅ System-protected |
+| Play Integrity | ✅ Google Play Services | ➖ N/A |
+| Firebase App Check | ✅ Play Integrity provider | ✅ App Attest / DeviceCheck |
 
 ---
 
