@@ -1,43 +1,49 @@
 package com.example.flutter_shield
 
+import android.app.Activity
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
-import android.util.Base64
+import android.view.WindowManager
 import androidx.annotation.NonNull
-import com.google.android.play.core.integrity.IntegrityManagerFactory
-import com.google.android.play.core.integrity.IntegrityTokenRequest
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
-import java.util.UUID
 
-class FlutterShieldPlugin: FlutterPlugin, MethodCallHandler {
+class FlutterShieldPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
   private lateinit var channel: MethodChannel
   private lateinit var context: Context
   private lateinit var securityChecker: SecurityChecker
-  private val pluginScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     channel = MethodChannel(flutterPluginBinding.binaryMessenger, "flutter_shield")
     channel.setMethodCallHandler(this)
     context = flutterPluginBinding.applicationContext
     securityChecker = SecurityChecker(context)
+  }
+
+  override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+    securityChecker.activity = binding.activity
+  }
+  override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+    securityChecker.activity = binding.activity
+  }
+  override fun onDetachedFromActivityForConfigChanges() {
+    securityChecker.activity = null
+  }
+  override fun onDetachedFromActivity() {
+    securityChecker.activity = null
   }
 
   override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
@@ -73,25 +79,17 @@ class FlutterShieldPlugin: FlutterPlugin, MethodCallHandler {
       "checkSensorAbuse" -> result.success(securityChecker.checkSensors())
       "checkDeviceTime" -> result.success(securityChecker.checkDeviceTime())
       "checkSideChannel" -> result.success(securityChecker.checkSideChannel())
-      "checkPlayIntegrity" -> {
-        pluginScope.launch {
-          val checkResult = withContext(Dispatchers.IO) {
-            securityChecker.checkPlayIntegrity()
-          }
-          result.success(checkResult)
-        }
-      }
       else -> result.notImplemented()
     }
   }
 
   override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
     channel.setMethodCallHandler(null)
-    pluginScope.cancel()
   }
 }
 
 class SecurityChecker(private val context: Context) {
+  var activity: Activity? = null
 
   fun checkRoot(): Map<String, Any> {
     val detectedVectors = mutableListOf<String>()
@@ -99,10 +97,13 @@ class SecurityChecker(private val context: Context) {
     if (checkTestKeys()) detectedVectors.add("test-keys build")
     if (checkSuPaths()) detectedVectors.add("su binary found")
     if (checkSuCommand()) detectedVectors.add("su command accessible")
-    if (checkMagiskPaths()) detectedVectors.add("Magisk files detected")
+    if (checkMagiskPaths()) detectedVectors.add("Magisk/KSU/APatch files detected")
     if (checkRootPackages()) detectedVectors.add("root management app installed")
     if (checkDangerousProps()) detectedVectors.add("dangerous system properties")
     if (checkWritableSystemPaths()) detectedVectors.add("system partition writable")
+    if (checkSeLinuxPermissive()) detectedVectors.add("SELinux permissive mode")
+    if (checkMagiskSocket()) detectedVectors.add("Magisk daemon socket found")
+    if (checkZygiskMaps()) detectedVectors.add("Zygisk injected in process maps")
 
     val isRooted = detectedVectors.isNotEmpty()
     return mapOf(
@@ -134,22 +135,35 @@ class SecurityChecker(private val context: Context) {
     return paths.any { File(it).exists() }
   }
 
+  // Bug fix: hardcoded /system/xbin/which misses most devices; try both locations.
+  // Bug fix: stderr must be consumed — unconsumed streams deadlock on some devices.
+  // Bug fix: waitFor() before destroy() to avoid zombie processes.
+  // Bug fix: waitFor without timeout blocks indefinitely if process hangs — use 3 s limit.
   private fun checkSuCommand(): Boolean {
-    var process: Process? = null
-    return try {
-      process = Runtime.getRuntime().exec(arrayOf("/system/xbin/which", "su"))
-      val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
-      reader.readLine() != null
-    } catch (t: Throwable) {
-      false
-    } finally {
-      process?.destroy()
+    val whichPaths = arrayOf("/system/bin/which", "/system/xbin/which", "which")
+    for (whichBin in whichPaths) {
+      var process: Process? = null
+      try {
+        process = Runtime.getRuntime().exec(arrayOf(whichBin, "su"))
+        process.errorStream.close() // consume stderr to prevent deadlock
+        val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
+        val found = reader.readLine() != null
+        reader.close()
+        process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+        if (found) return true
+      } catch (_: Throwable) {
+        // path not found — try next
+      } finally {
+        process?.destroy()
+      }
     }
+    return false
   }
 
-  // Magisk-specific detection
+  // Magisk / KernelSU / APatch path detection
   private fun checkMagiskPaths(): Boolean {
-    val magiskPaths = arrayOf(
+    val paths = arrayOf(
+      // Magisk
       "/sbin/.magisk",
       "/sbin/.core/mirror",
       "/sbin/.core/img",
@@ -159,16 +173,43 @@ class SecurityChecker(private val context: Context) {
       "/data/adb/modules",
       "/cache/.disable_magisk",
       "/dev/magisk",
-      "/system/xbin/ku.sud"
+      "/system/xbin/ku.sud",
+      // KernelSU
+      "/data/adb/ksu",
+      "/data/adb/ksud",
+      "/data/adb/ksu/bin/ksud",
+      // APatch
+      "/data/adb/ap",
+      "/data/adb/apatch",
     )
-    return magiskPaths.any { File(it).exists() }
+    if (paths.any { File(it).exists() }) return true
+    return checkMagiskMounts()
   }
 
-  // Check for root manager packages (Magisk Manager, SuperSU, KingRoot, etc.)
+  // /proc/mounts check — survives Magisk Hide / Zygisk path hiding
+  private fun checkMagiskMounts(): Boolean {
+    return try {
+      File("/proc/mounts").bufferedReader().useLines { lines ->
+        lines.any { line ->
+          line.contains("magisk", ignoreCase = true) ||
+          line.contains("KSU", ignoreCase = true) ||
+          line.contains("kernelsu", ignoreCase = true) ||
+          line.contains("apatch", ignoreCase = true)
+        }
+      }
+    } catch (_: Exception) {
+      false
+    }
+  }
+
+  // Check for root manager packages (Magisk, KernelSU, APatch, SuperSU, KingRoot, etc.)
   private fun checkRootPackages(): Boolean {
     val rootPackages = listOf(
       "com.topjohnwu.magisk",          // Magisk Manager
       "io.github.huskydg.magisk",      // Magisk Delta
+      "com.topjohnwu.magisk.stub",     // Magisk stub
+      "me.weishu.kernelsu",            // KernelSU Manager
+      "me.bmax.apatch",                // APatch Manager
       "com.noshufou.android.su",       // SuperUser
       "com.noshufou.android.su.elite", // SuperUser Elite
       "eu.chainfire.supersu",          // SuperSU
@@ -176,13 +217,12 @@ class SecurityChecker(private val context: Context) {
       "com.thirdparty.superuser",
       "com.yellowes.su",
       "com.kingroot.kinguser",         // KingRoot
-      "com.kingo.root",               // KingoRoot
+      "com.kingo.root",                // KingoRoot
       "com.smedialink.oneclickroot",
       "com.zhiqupk.root.global",
       "com.alephzain.framaroot",
       "com.zachspong.temprootremovejb",
       "com.ramdroid.appquarantine",
-      "com.topjohnwu.magisk.stub"
     )
     val pm = context.packageManager
     return rootPackages.any { pkg ->
@@ -191,20 +231,26 @@ class SecurityChecker(private val context: Context) {
   }
 
   // Check dangerous ro properties that indicate rooted/modified system
+  // Bug fix: stderr consumed + waitFor(timeout) + destroy() to prevent zombie processes and hangs.
+  // Bug fix: ro.build.type must also check "eng" — engineering builds are equally dangerous.
   private fun checkDangerousProps(): Boolean {
-    val dangerousProps = mapOf(
-      "ro.debuggable" to "1",
-      "ro.secure" to "0",
-      "ro.build.selinux" to "0"
+    val dangerousProps = listOf(
+      "ro.debuggable" to setOf("1"),
+      "ro.secure" to setOf("0"),
+      "ro.build.selinux" to setOf("0"),
+      "ro.build.type" to setOf("userdebug", "eng"),  // both indicate unlocked/debug build
     )
-    return dangerousProps.any { (prop, dangerousValue) ->
+    return dangerousProps.any { (prop, dangerousValues) ->
       try {
         val process = Runtime.getRuntime().exec(arrayOf("getprop", prop))
+        process.errorStream.close()
         val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
         val value = reader.readLine()?.trim()
+        reader.close()
+        process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
         process.destroy()
-        value == dangerousValue
-      } catch (e: Exception) {
+        value != null && value in dangerousValues
+      } catch (_: Exception) {
         false
       }
     }
@@ -220,6 +266,51 @@ class SecurityChecker(private val context: Context) {
       } catch (e: Exception) {
         false
       }
+    }
+  }
+
+  // SELinux permissive = root almost certain (Magisk can set it permissive on older kernels)
+  private fun checkSeLinuxPermissive(): Boolean {
+    return try {
+      val process = Runtime.getRuntime().exec("getenforce")
+      process.errorStream.close()
+      val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
+      val value = reader.readLine()?.trim()
+      reader.close()
+      process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+      process.destroy()
+      value?.equals("Permissive", ignoreCase = true) == true
+    } catch (_: Exception) {
+      false
+    }
+  }
+
+  // Magisk daemon communicates via abstract Unix socket @magisk_service — survives path hiding
+  private fun checkMagiskSocket(): Boolean {
+    return try {
+      File("/proc/net/unix").bufferedReader().useLines { lines ->
+        lines.any { line ->
+          line.contains("@magisk", ignoreCase = true) ||
+          line.contains("@ksu_", ignoreCase = true)
+        }
+      }
+    } catch (_: Exception) {
+      false
+    }
+  }
+
+  // Zygisk injects into every process — its native lib appears in /proc/self/maps
+  private fun checkZygiskMaps(): Boolean {
+    return try {
+      File("/proc/self/maps").bufferedReader().useLines { lines ->
+        lines.any { line ->
+          line.contains("zygisk", ignoreCase = true) ||
+          line.contains("magisk", ignoreCase = true) ||
+          line.contains("/data/adb/modules", ignoreCase = true)
+        }
+      }
+    } catch (_: Exception) {
+      false
     }
   }
 
@@ -297,22 +388,40 @@ class SecurityChecker(private val context: Context) {
   }
 
   fun checkMalware(): Map<String, Any> {
-    // Basic check - can be extended with more sophisticated detection
-    val suspiciousApps = listOf("com.example.malware", "com.suspicious.app")
+    val knownMalicious = listOf(
+      // Stalkerware / commercial spyware
+      "com.mspy.android", "com.mspy.android.sn", "org.mspy",
+      "com.flexispy.android", "com.highster.mobile",
+      "com.ikeymonitor", "com.ispyoo.android",
+      "com.clevguard.android", "net.clevguard",
+      "com.hoverwatch", "com.spyzie.android",
+      "com.cocospy.android", "com.umobix.android",
+      "com.mobilespy.android", "com.trackview",
+      "com.spymaster.android", "com.reptilicus.android",
+      "com.copy9.android", "com.phonebeagle",
+      "com.mobistealth.android", "com.iamspy",
+      // Remote-access trojans
+      "com.metasploit.stage", "com.androrat.android",
+      "com.omerta.rat", "com.dendroid.rat",
+      // Banking trojans / common malware families
+      "com.bankbot.android", "com.cerberus.android",
+      "com.anubis.android", "com.hydra.android",
+      "com.alien.android", "com.gustuff.android",
+      // Fake security / scareware
+      "com.virus.cleaner.fake", "com.fake.antivirus",
+      "com.android.system.update.fake",
+    )
     val pm = context.packageManager
-    val hasMalware = suspiciousApps.any {
-      try {
-        pm.getPackageInfo(it, 0)
-        true
-      } catch (e: Exception) {
-        false
-      }
+    val found = knownMalicious.filter { pkg ->
+      try { pm.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
     }
-
     return mapOf(
       "type" to "malwareExposure",
-      "isVulnerable" to hasMalware,
-      "message" to if (hasMalware) "Suspicious apps detected" else "No malware detected"
+      "isVulnerable" to found.isNotEmpty(),
+      "message" to if (found.isNotEmpty())
+        "Known malicious/stalkerware apps detected: ${found.joinToString()}"
+      else
+        "No known malicious apps detected"
     )
   }
 
@@ -356,12 +465,25 @@ class SecurityChecker(private val context: Context) {
   }
 
   fun checkKeystore(): Map<String, Any> {
-    // Basic check for keystore usage
-    return mapOf(
-      "type" to "improperKeychainKeystore",
-      "isVulnerable" to false,
-      "message" to "Keystore check requires app-specific implementation"
-    )
+    return try {
+      val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
+      ks.load(null)
+      val aliases = ks.aliases().toList()
+      mapOf(
+        "type" to "improperKeychainKeystore",
+        "isVulnerable" to aliases.isEmpty(),
+        "message" to if (aliases.isEmpty())
+          "Android Keystore is empty — sensitive keys should be stored in the Keystore, not in SharedPreferences or files"
+        else
+          "Android Keystore in use (${aliases.size} key entry(s) found)"
+      )
+    } catch (e: Exception) {
+      mapOf(
+        "type" to "improperKeychainKeystore",
+        "isVulnerable" to true,
+        "message" to "Failed to access Android Keystore: ${e.message}"
+      )
+    }
   }
 
   fun checkFilePermissions(): Map<String, Any> {
@@ -381,9 +503,12 @@ class SecurityChecker(private val context: Context) {
     val externalFilesDir = context.getExternalFilesDir(null)
     // Only flag if sensitive file types exist — plain existence of the directory is not a risk.
     val sensitiveExtensions = setOf("db", "sqlite", "sqlite3", "key", "pem", "p12", "jks", "json", "xml", "txt")
-    val hasSensitiveFiles = externalFilesDir?.walkTopDown()?.any { file ->
-      file.isFile && file.extension.lowercase() in sensitiveExtensions
-    } ?: false
+    // walkTopDown on external storage can throw SecurityException or IOException on permission errors
+    val hasSensitiveFiles = try {
+      externalFilesDir?.walkTopDown()?.any { file ->
+        file.isFile && file.extension.lowercase() in sensitiveExtensions
+      } ?: false
+    } catch (_: Exception) { false }
 
     return mapOf(
       "type" to "externalStorageSensitiveData",
@@ -405,18 +530,54 @@ class SecurityChecker(private val context: Context) {
   }
 
   fun checkBiometric(): Map<String, Any> {
-    return mapOf(
-      "type" to "weakBiometricHandling",
-      "isVulnerable" to false,
-      "message" to "Biometric check requires runtime implementation"
-    )
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+      return mapOf(
+        "type" to "weakBiometricHandling",
+        "isVulnerable" to false,
+        "message" to "BiometricManager requires Android 10+ — verify biometric handling manually on this device"
+      )
+    }
+    val bm = context.getSystemService(android.hardware.biometrics.BiometricManager::class.java)
+    return when (bm?.canAuthenticate(android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_STRONG)) {
+      android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS ->
+        mapOf("type" to "weakBiometricHandling", "isVulnerable" to false,
+          "message" to "Strong biometric authentication is available and configured")
+      android.hardware.biometrics.BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE ->
+        mapOf("type" to "weakBiometricHandling", "isVulnerable" to true,
+          "message" to "No biometric hardware detected on this device")
+      android.hardware.biometrics.BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED ->
+        mapOf("type" to "weakBiometricHandling", "isVulnerable" to true,
+          "message" to "No biometrics enrolled — users cannot authenticate with biometrics")
+      android.hardware.biometrics.BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED ->
+        mapOf("type" to "weakBiometricHandling", "isVulnerable" to true,
+          "message" to "Biometric security update required to meet strong authentication standards")
+      else ->
+        mapOf("type" to "weakBiometricHandling", "isVulnerable" to false,
+          "message" to "Biometric status could not be determined")
+    }
   }
 
   fun checkBiometricBypass(): Map<String, Any> {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+      return mapOf("type" to "biometricBypass", "isVulnerable" to false,
+        "message" to "Biometric bypass check requires Android 10+")
+    }
+    val bm = context.getSystemService(android.hardware.biometrics.BiometricManager::class.java)
+    val strongOk = bm?.canAuthenticate(android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+      android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS
+    val weakOk = bm?.canAuthenticate(android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK) ==
+      android.hardware.biometrics.BiometricManager.BIOMETRIC_SUCCESS
+    // Vulnerable if only weak biometric (face/iris) is available — susceptible to photo/mask bypass
+    val vulnerable = !strongOk && weakOk
     return mapOf(
       "type" to "biometricBypass",
-      "isVulnerable" to false,
-      "message" to "Biometric bypass check requires app-specific logic"
+      "isVulnerable" to vulnerable,
+      "message" to if (vulnerable)
+        "Only weak biometric (face/iris) available — susceptible to bypass via photo or mask. Use BIOMETRIC_STRONG."
+      else if (strongOk)
+        "Strong biometric (fingerprint) enforced — bypass resistance is adequate"
+      else
+        "No biometric enrolled — bypass check not applicable"
     )
   }
 
@@ -432,122 +593,378 @@ class SecurityChecker(private val context: Context) {
   }
 
   fun checkScreenshot(): Map<String, Any> {
+    val act = activity ?: return mapOf("type" to "screenshotNotRestricted",
+      "isVulnerable" to true,
+      "message" to "Screenshot check unavailable — activity not attached; assume vulnerable")
+    val flagSecure = (act.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE) != 0
     return mapOf(
       "type" to "screenshotNotRestricted",
-      "isVulnerable" to true,
-      "message" to "Screenshots not restricted (use FLAG_SECURE in activity)"
+      "isVulnerable" to !flagSecure,
+      "message" to if (flagSecure)
+        "Screenshots are restricted via FLAG_SECURE"
+      else
+        "Screenshots are not restricted — add FLAG_SECURE to your Activity window to prevent screen capture"
     )
   }
 
   fun checkScreenRecording(): Map<String, Any> {
+    val act = activity ?: return mapOf("type" to "screenRecordingNotRestricted",
+      "isVulnerable" to true,
+      "message" to "Screen recording check unavailable — activity not attached; assume vulnerable")
+    // FLAG_SECURE blocks both screenshots and screen recording on Android
+    val flagSecure = (act.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE) != 0
     return mapOf(
       "type" to "screenRecordingNotRestricted",
-      "isVulnerable" to true,
-      "message" to "Screen recording not restricted"
+      "isVulnerable" to !flagSecure,
+      "message" to if (flagSecure)
+        "Screen recording is blocked via FLAG_SECURE"
+      else
+        "Screen recording is not restricted — FLAG_SECURE prevents both screenshots and screen recording"
     )
   }
 
   fun checkClipboard(): Map<String, Any> {
-    return mapOf(
-      "type" to "clipboardLeakage",
-      "isVulnerable" to true,
-      "message" to "Clipboard not monitored for sensitive data"
-    )
+    return try {
+      val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+      if (!cm.hasPrimaryClip()) {
+        return mapOf("type" to "clipboardLeakage", "isVulnerable" to false,
+          "message" to "Clipboard is empty")
+      }
+      val text = cm.primaryClip?.getItemAt(0)?.text?.toString()
+        ?: return mapOf("type" to "clipboardLeakage", "isVulnerable" to false,
+          "message" to "Clipboard contains non-text data")
+
+      val sensitivePatterns = listOf(
+        Regex("""\b\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b"""),                // credit card
+        Regex("""\b\d{3}-\d{2}-\d{4}\b"""),                                          // SSN
+        Regex("""(?i)password[\s:=]+\S+"""),                                          // password field
+        Regex("""(?i)(api[_\-]?key|secret[_\-]?key|access[_\-]?token)[\s:=]+\S+"""),// API key/token
+        Regex("""(?i)Bearer\s+[A-Za-z0-9\-._~+/]+=*"""),                            // Bearer token
+        // Private key header — highly specific, no false positives
+        Regex("""-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----"""),
+      )
+      val hasSensitive = sensitivePatterns.any { it.containsMatchIn(text) }
+      mapOf(
+        "type" to "clipboardLeakage",
+        "isVulnerable" to hasSensitive,
+        "message" to if (hasSensitive)
+          "Clipboard appears to contain sensitive data (credit card, token, password, or key pattern detected)"
+        else
+          "Clipboard content does not match known sensitive patterns"
+      )
+    } catch (e: Exception) {
+      mapOf("type" to "clipboardLeakage", "isVulnerable" to false,
+        "message" to "Clipboard check unavailable: ${e.message}")
+    }
   }
 
   fun checkOverlay(): Map<String, Any> {
-    return mapOf(
-      "type" to "overlayAttack",
-      "isVulnerable" to true,
-      "message" to "Overlay detection not implemented"
-    )
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+      return mapOf("type" to "overlayAttack", "isVulnerable" to false,
+        "message" to "Overlay permission management not available below Android 6.0")
+    }
+    return try {
+      val pm = context.packageManager
+      @Suppress("DEPRECATION")
+      val overlayApps = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+        .filter { pkg ->
+          pkg.packageName != context.packageName &&
+          (pkg.applicationInfo?.flags?.and(ApplicationInfo.FLAG_SYSTEM) ?: 0) == 0 &&
+          pkg.requestedPermissions?.contains(android.Manifest.permission.SYSTEM_ALERT_WINDOW) == true
+        }
+        .map { it.packageName }
+      mapOf(
+        "type" to "overlayAttack",
+        "isVulnerable" to overlayApps.isNotEmpty(),
+        "message" to if (overlayApps.isNotEmpty())
+          "${overlayApps.size} third-party app(s) declare overlay (SYSTEM_ALERT_WINDOW) permission: ${overlayApps.take(3).joinToString()}"
+        else
+          "No third-party apps with overlay permission found"
+      )
+    } catch (e: Exception) {
+      mapOf("type" to "overlayAttack", "isVulnerable" to false,
+        "message" to "Overlay check failed: ${e.message}")
+    }
   }
 
   fun checkBackgroundData(): Map<String, Any> {
+    val act = activity ?: return mapOf("type" to "backgroundDataExposure",
+      "isVulnerable" to true,
+      "message" to "Background data check unavailable — activity not attached; assume vulnerable")
+    val flagSecure = (act.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE) != 0
     return mapOf(
       "type" to "backgroundDataExposure",
-      "isVulnerable" to true,
-      "message" to "Background data exposure check requires app-specific logic"
+      "isVulnerable" to !flagSecure,
+      "message" to if (flagSecure)
+        "Background data exposure mitigated via FLAG_SECURE"
+      else
+        "Sensitive UI content may be visible in app switcher — use FLAG_SECURE or clear sensitive views in onPause()"
     )
   }
 
   fun checkRecentApps(): Map<String, Any> {
+    val act = activity ?: return mapOf("type" to "recentAppsExposure",
+      "isVulnerable" to true,
+      "message" to "Recent apps check unavailable — activity not attached; assume vulnerable")
+    val flagSecure = (act.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE) != 0
     return mapOf(
       "type" to "recentAppsExposure",
-      "isVulnerable" to true,
-      "message" to "Recent apps exposure not prevented"
+      "isVulnerable" to !flagSecure,
+      "message" to if (flagSecure)
+        "Recent apps thumbnail is protected via FLAG_SECURE"
+      else
+        "App content visible in recent apps — add FLAG_SECURE to prevent content leakage in task switcher"
     )
   }
 
   fun checkIPC(): Map<String, Any> {
-    return mapOf(
-      "type" to "insecureIPC",
-      "isVulnerable" to false,
-      "message" to "IPC check requires manifest analysis"
-    )
+    return try {
+      val pm = context.packageManager
+      @Suppress("DEPRECATION")
+      val info = pm.getPackageInfo(context.packageName, PackageManager.GET_PROVIDERS)
+      val exposed = info.providers?.filter { p ->
+        p.exported && p.readPermission == null && p.writePermission == null
+      }?.map { it.name.substringAfterLast('.') } ?: emptyList()
+      mapOf(
+        "type" to "insecureIPC",
+        "isVulnerable" to exposed.isNotEmpty(),
+        "message" to if (exposed.isNotEmpty())
+          "${exposed.size} ContentProvider(s) exported without read/write permission: ${exposed.joinToString()}"
+        else
+          "No unprotected exported ContentProviders found"
+      )
+    } catch (e: Exception) {
+      mapOf("type" to "insecureIPC", "isVulnerable" to false,
+        "message" to "IPC check failed: ${e.message}")
+    }
   }
 
   fun checkIntentHijacking(): Map<String, Any> {
-    return mapOf(
-      "type" to "intentHijacking",
-      "isVulnerable" to false,
-      "message" to "Intent hijacking check requires manifest analysis"
-    )
+    return try {
+      val pm = context.packageManager
+      @Suppress("DEPRECATION")
+      val info = pm.getPackageInfo(context.packageName, PackageManager.GET_ACTIVITIES)
+      val exposed = info.activities?.filter { a ->
+        a.exported && a.permission == null &&
+        // Exclude the main launcher activity — intentionally exported
+        !a.name.endsWith("MainActivity") && !a.name.endsWith("LaunchActivity")
+      }?.map { it.name.substringAfterLast('.') } ?: emptyList()
+      mapOf(
+        "type" to "intentHijacking",
+        "isVulnerable" to exposed.isNotEmpty(),
+        "message" to if (exposed.isNotEmpty())
+          "${exposed.size} Activity(ies) exported without permission protection: ${exposed.joinToString()}"
+        else
+          "No unprotected exported Activities found"
+      )
+    } catch (e: Exception) {
+      mapOf("type" to "intentHijacking", "isVulnerable" to false,
+        "message" to "Intent hijacking check failed: ${e.message}")
+    }
   }
 
   fun checkBroadcastReceiver(): Map<String, Any> {
-    return mapOf(
-      "type" to "broadcastReceiverExposure",
-      "isVulnerable" to false,
-      "message" to "Broadcast receiver check requires manifest analysis"
-    )
+    return try {
+      val pm = context.packageManager
+      @Suppress("DEPRECATION")
+      val info = pm.getPackageInfo(context.packageName, PackageManager.GET_RECEIVERS)
+      val exposed = info.receivers?.filter { r ->
+        r.exported && r.permission == null
+      }?.map { it.name.substringAfterLast('.') } ?: emptyList()
+      mapOf(
+        "type" to "broadcastReceiverExposure",
+        "isVulnerable" to exposed.isNotEmpty(),
+        "message" to if (exposed.isNotEmpty())
+          "${exposed.size} BroadcastReceiver(s) exported without permission: ${exposed.joinToString()}"
+        else
+          "No unprotected exported BroadcastReceivers found"
+      )
+    } catch (e: Exception) {
+      mapOf("type" to "broadcastReceiverExposure", "isVulnerable" to false,
+        "message" to "Broadcast receiver check failed: ${e.message}")
+    }
   }
 
   fun checkDeepLink(): Map<String, Any> {
-    return mapOf(
-      "type" to "deepLinkHijacking",
-      "isVulnerable" to false,
-      "message" to "Deep link check requires manifest analysis"
-    )
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      return try {
+        val dvm = context.getSystemService(
+          android.content.pm.verify.domain.DomainVerificationManager::class.java
+        )
+        val userState = dvm?.getDomainVerificationUserState(context.packageName)
+        val hostMap = userState?.hostToStateMap ?: emptyMap()
+        val unverified = hostMap.filter { (_, state) ->
+          state == android.content.pm.verify.domain.DomainVerificationUserState.DOMAIN_STATE_NONE
+        }.keys.toList()
+        when {
+          hostMap.isEmpty() -> mapOf(
+            "type" to "deepLinkHijacking", "isVulnerable" to false,
+            "message" to "No App Links configured — if using deep links, add android:autoVerify=\"true\""
+          )
+          unverified.isNotEmpty() -> mapOf(
+            "type" to "deepLinkHijacking", "isVulnerable" to true,
+            "message" to "${unverified.size} domain(s) not verified via App Links: ${unverified.take(3).joinToString()}"
+          )
+          else -> mapOf(
+            "type" to "deepLinkHijacking", "isVulnerable" to false,
+            "message" to "All ${hostMap.size} App Links domain(s) are verified"
+          )
+        }
+      } catch (e: Exception) {
+        mapOf("type" to "deepLinkHijacking", "isVulnerable" to false,
+          "message" to "Deep link check failed: ${e.message}")
+      }
+    }
+    // Below Android 12: check for exported activities other than the known launcher entry points
+    return try {
+      val pm = context.packageManager
+      @Suppress("DEPRECATION")
+      val info = pm.getPackageInfo(context.packageName, PackageManager.GET_ACTIVITIES)
+      val exposed = info.activities?.filter { a ->
+        a.exported &&
+        !a.name.endsWith("MainActivity") &&
+        !a.name.endsWith("LaunchActivity") &&
+        !a.name.endsWith("FlutterActivity")
+      }?.map { it.name.substringAfterLast('.') } ?: emptyList()
+      mapOf(
+        "type" to "deepLinkHijacking",
+        "isVulnerable" to exposed.isNotEmpty(),
+        "message" to if (exposed.isNotEmpty())
+          "${exposed.size} exported Activity(ies) may handle deep links without verification: ${exposed.joinToString()} — use android:autoVerify=\"true\" (Android 12+ required for full check)"
+        else
+          "No unprotected deep-link Activities detected (Android 12+ required for full App Links verification)"
+      )
+    } catch (e: Exception) {
+      mapOf("type" to "deepLinkHijacking", "isVulnerable" to false,
+        "message" to "Deep link check failed: ${e.message}")
+    }
   }
 
   fun checkWebViewDebugging(): Map<String, Any> {
+    // WebView.setWebContentsDebuggingEnabled() is typically called only in debug builds.
+    // Use FLAG_DEBUGGABLE as a reliable proxy — production apps must not have this flag.
+    val isDebuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     return mapOf(
       "type" to "webViewDebugging",
-      "isVulnerable" to false,
-      "message" to "WebView debugging check requires runtime inspection"
+      "isVulnerable" to isDebuggable,
+      "message" to if (isDebuggable)
+        "App is debuggable — WebView.setWebContentsDebuggingEnabled(true) likely active; attackers can inspect WebView via Chrome DevTools"
+      else
+        "App is not debuggable — WebView remote debugging should be disabled in this build"
     )
   }
 
   fun checkWebViewJavaScript(): Map<String, Any> {
-    return mapOf(
-      "type" to "webViewJavaScriptAbuse",
-      "isVulnerable" to false,
-      "message" to "WebView JavaScript check requires runtime inspection"
-    )
+    // getCurrentWebViewPackage() requires API 26 — use FLAG_DEBUGGABLE as proxy on older devices
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+      return mapOf(
+        "type" to "webViewJavaScriptAbuse",
+        "isVulnerable" to debuggable,
+        "message" to if (debuggable)
+          "App is debuggable on Android < 8.0 — WebView JS abuse risk elevated"
+        else
+          "WebView version check requires Android 8.0+ — app appears non-debuggable"
+      )
+    }
+    return try {
+      val pkg = android.webkit.WebView.getCurrentWebViewPackage()
+        ?: return mapOf("type" to "webViewJavaScriptAbuse", "isVulnerable" to false,
+          "message" to "WebView not available on this device")
+      val major = pkg.versionName?.substringBefore('.')?.toIntOrNull() ?: 0
+      val outdated = major in 1..99
+      mapOf(
+        "type" to "webViewJavaScriptAbuse",
+        "isVulnerable" to outdated,
+        "message" to if (outdated)
+          "WebView (${pkg.packageName} v${pkg.versionName}) is outdated — update to fix known JS/CVE vulnerabilities"
+        else
+          "WebView (${pkg.packageName} v${pkg.versionName}) is up to date"
+      )
+    } catch (e: Exception) {
+      mapOf("type" to "webViewJavaScriptAbuse", "isVulnerable" to false,
+        "message" to "WebView version check failed: ${e.message}")
+    }
   }
 
   fun checkPermissions(): Map<String, Any> {
-    return mapOf(
-      "type" to "runtimePermissionMissing",
-      "isVulnerable" to false,
-      "message" to "Permission validation requires app-specific checks"
+    // High-risk permissions — their presence in the manifest warrants review
+    val highRisk = mapOf(
+      android.Manifest.permission.READ_SMS to "READ_SMS",
+      android.Manifest.permission.RECEIVE_SMS to "RECEIVE_SMS",
+      android.Manifest.permission.SEND_SMS to "SEND_SMS",
+      android.Manifest.permission.READ_CALL_LOG to "READ_CALL_LOG",
+      android.Manifest.permission.WRITE_CALL_LOG to "WRITE_CALL_LOG",
+      "android.permission.PROCESS_OUTGOING_CALLS" to "PROCESS_OUTGOING_CALLS",
+      "android.permission.MANAGE_EXTERNAL_STORAGE" to "MANAGE_EXTERNAL_STORAGE",
+      "android.permission.REQUEST_INSTALL_PACKAGES" to "REQUEST_INSTALL_PACKAGES",
+      "android.permission.BIND_ACCESSIBILITY_SERVICE" to "BIND_ACCESSIBILITY_SERVICE",
+      "android.permission.BIND_DEVICE_ADMIN" to "BIND_DEVICE_ADMIN",
     )
+    return try {
+      val pm = context.packageManager
+      @Suppress("DEPRECATION")
+      val declared = pm.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
+        .requestedPermissions ?: emptyArray()
+      val found = highRisk.filter { (perm, _) -> declared.contains(perm) }.values.toList()
+      mapOf(
+        "type" to "runtimePermissionMissing",
+        "isVulnerable" to found.isNotEmpty(),
+        "message" to if (found.isNotEmpty())
+          "High-risk permissions declared in manifest: ${found.joinToString()} — verify each is necessary"
+        else
+          "No high-risk permissions declared in manifest"
+      )
+    } catch (e: Exception) {
+      mapOf("type" to "runtimePermissionMissing", "isVulnerable" to false,
+        "message" to "Permission check failed: ${e.message}")
+    }
   }
 
   fun checkAutofill(): Map<String, Any> {
-    return mapOf(
-      "type" to "insecureAutofill",
-      "isVulnerable" to false,
-      "message" to "Autofill security requires app-specific implementation"
-    )
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      return mapOf("type" to "insecureAutofill", "isVulnerable" to false,
+        "message" to "Autofill framework not available below Android 8.0")
+    }
+    return try {
+      val am = context.getSystemService(android.view.autofill.AutofillManager::class.java)
+      val enabled = am?.isEnabled == true
+      mapOf(
+        "type" to "insecureAutofill",
+        "isVulnerable" to enabled,
+        "message" to if (enabled)
+          "System autofill is active — ensure sensitive fields set android:importantForAutofill=\"no\" to prevent credential leakage"
+        else
+          "Autofill is not active on this device"
+      )
+    } catch (e: Exception) {
+      mapOf("type" to "insecureAutofill", "isVulnerable" to false,
+        "message" to "Autofill check failed: ${e.message}")
+    }
   }
 
   fun checkSensors(): Map<String, Any> {
+    // checkSelfPermission() requires API 23 — on API 21/22 all install-time permissions are granted
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+      return mapOf("type" to "sensorAbuse", "isVulnerable" to false,
+        "message" to "Sensor permission check requires Android 6.0+ — permissions were granted at install time on this device")
+    }
+    val sensorPerms = mapOf(
+      android.Manifest.permission.CAMERA to "Camera",
+      android.Manifest.permission.RECORD_AUDIO to "Microphone",
+      android.Manifest.permission.ACCESS_FINE_LOCATION to "GPS/Fine Location",
+      android.Manifest.permission.BODY_SENSORS to "Body Sensors",
+    )
+    val granted = sensorPerms
+      .filter { (perm, _) -> context.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED }
+      .values.toList()
     return mapOf(
       "type" to "sensorAbuse",
-      "isVulnerable" to false,
-      "message" to "Sensor abuse check requires permission analysis"
+      "isVulnerable" to granted.isNotEmpty(),
+      "message" to if (granted.isNotEmpty())
+        "Sensitive sensor permissions currently granted: ${granted.joinToString()} — verify background access is restricted"
+      else
+        "No sensitive sensor permissions currently granted"
     )
   }
 
@@ -565,41 +982,28 @@ class SecurityChecker(private val context: Context) {
   }
 
   fun checkSideChannel(): Map<String, Any> {
+    val issues = mutableListOf<String>()
+    val logExts = setOf("log", "trace", "dump")
+    // Log files in app storage can leak sensitive data via adb or direct file access
+    try {
+      if (context.filesDir.walkTopDown().any { it.isFile && it.extension.lowercase() in logExts })
+        issues.add("log/trace files in internal storage")
+    } catch (_: Exception) {}
+    try {
+      if (context.cacheDir.listFiles()?.any { it.extension.lowercase() in logExts } == true)
+        issues.add("debug artifacts in cache directory")
+    } catch (_: Exception) {}
+    // Debuggable flag exposes all Log.d/v output to any app via logcat
+    if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0)
+      issues.add("debuggable flag enables full logcat side-channel")
     return mapOf(
       "type" to "sideChannelAttacks",
-      "isVulnerable" to false,
-      "message" to "Side-channel attack prevention requires specific implementation"
+      "isVulnerable" to issues.isNotEmpty(),
+      "message" to if (issues.isNotEmpty())
+        "Side-channel risk detected: ${issues.joinToString()}"
+      else
+        "No obvious side-channel vulnerabilities detected"
     )
   }
 
-  suspend fun checkPlayIntegrity(): Map<String, Any> {
-    return try {
-      val nonce = Base64.encodeToString(
-        UUID.randomUUID().toString().toByteArray(Charsets.UTF_8),
-        Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-      )
-      val integrityManager = IntegrityManagerFactory.create(context)
-      val tokenResponse = integrityManager
-        .requestIntegrityToken(IntegrityTokenRequest.builder().setNonce(nonce).build())
-        .await()
-
-      mapOf(
-        "type" to "playIntegrityFailed",
-        "isVulnerable" to false,
-        "message" to "Play Integrity token obtained. Send token to your server for full verdict verification.",
-        "details" to mapOf(
-          "token" to tokenResponse.token(),
-          "nonce" to nonce
-        )
-      )
-    } catch (e: Exception) {
-      // Token request failed — treat as vulnerable since we cannot attest the device
-      mapOf(
-        "type" to "playIntegrityFailed",
-        "isVulnerable" to true,
-        "message" to "Play Integrity check failed: ${e.message}",
-        "details" to mapOf("error" to (e.message ?: "Unknown error"))
-      )
-    }
-  }
 }

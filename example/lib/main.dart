@@ -1,32 +1,16 @@
 import 'dart:math' as math;
 
-import 'package:firebase_app_check/firebase_app_check.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_shield/flutter_shield.dart';
 
-bool _firebaseReady = false;
-
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
     systemNavigationBarColor: Color(0xFF0A0E1A),
   ));
-
-  try {
-    await Firebase.initializeApp();
-    await FirebaseAppCheck.instance.activate(
-      androidProvider: AndroidProvider.debug, // change to playIntegrity for release
-      appleProvider: AppleProvider.debug,     // change to appAttest for release
-    );
-    _firebaseReady = true;
-  } catch (_) {
-    // Firebase not configured — App Check card will show setup instructions
-  }
-
   runApp(const MyApp());
 }
 
@@ -82,11 +66,6 @@ class _HomeScreenState extends State<HomeScreen>
   late final AnimationController _pulse;
   SecurityReport? _lastReport;
   bool _scanning = false;
-
-  SecurityCheckResult? _playIntegrityResult;
-  SecurityCheckResult? _appCheckResult;
-  bool _playIntegrityLoading = false;
-  bool _appCheckLoading = false;
 
   @override
   void initState() {
@@ -155,89 +134,6 @@ class _HomeScreenState extends State<HomeScreen>
     ));
   }
 
-  Future<void> _runPlayIntegrity() async {
-    setState(() => _playIntegrityLoading = true);
-    try {
-      final result = await FlutterShield.checkPlayIntegrity();
-      if (!mounted) return;
-      setState(() {
-        _playIntegrityResult = result;
-        _playIntegrityLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _playIntegrityLoading = false);
-      _showError('Play Integrity failed: $e');
-    }
-  }
-
-  Future<void> _runAppCheck() async {
-    if (!_firebaseReady) {
-      _showError('Firebase not configured. Add google-services.json to android/app/');
-      return;
-    }
-    setState(() => _appCheckLoading = true);
-    try {
-      final result = await FlutterShield.checkFirebaseAppCheck();
-      if (!mounted) return;
-      setState(() {
-        _appCheckResult = result;
-        _appCheckLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _appCheckLoading = false);
-      _showError('App Check failed: $e');
-    }
-  }
-
-  Widget _attestationSection() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Text('App Attestation',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: _textPri)),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: _accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: const Text('NEW',
-                style: TextStyle(fontSize: 10, color: _accent,
-                    fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-          ),
-          const Spacer(),
-          const Text('Defeats Magisk+Shamiko',
-              style: TextStyle(fontSize: 11, color: _textSec)),
-        ]),
-        const SizedBox(height: 14),
-        _AttestationCard(
-          title: 'Play Integrity',
-          subtitle: 'Google token · verify server-side',
-          icon: Icons.verified_user_outlined,
-          iconColor: _blue,
-          loading: _playIntegrityLoading,
-          result: _playIntegrityResult,
-          onTap: _runPlayIntegrity,
-        ),
-        const SizedBox(height: 10),
-        _AttestationCard(
-          title: 'Firebase App Check',
-          subtitle: _firebaseReady ? 'Play Integrity provider · no server needed' : 'Firebase not configured',
-          icon: Icons.local_fire_department_outlined,
-          iconColor: const Color(0xFFFF9800),
-          loading: _appCheckLoading,
-          result: _appCheckResult,
-          onTap: _firebaseReady ? _runAppCheck : () => _showError('Add google-services.json to android/app/ and configure Firebase.'),
-          disabled: !_firebaseReady,
-        ),
-      ]),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -261,7 +157,6 @@ class _HomeScreenState extends State<HomeScreen>
                 SliverToBoxAdapter(child: _hero()),
                 SliverToBoxAdapter(child: _scanButton()),
                 SliverToBoxAdapter(child: _quickChecksSection()),
-                SliverToBoxAdapter(child: _attestationSection()),
         const SliverToBoxAdapter(child: SizedBox(height: 40)),
               ],
             ),
@@ -284,7 +179,7 @@ class _HomeScreenState extends State<HomeScreen>
                 decoration: const BoxDecoration(color: _accent, shape: BoxShape.circle),
               ),
               const SizedBox(width: 6),
-              const Text('v1.2.0',
+              const Text('v1.2.1',
                   style: TextStyle(color: _accent, fontSize: 12, fontWeight: FontWeight.w600)),
             ]),
           ),
@@ -566,9 +461,6 @@ class _ResultsScreenState extends State<ResultsScreen>
       case VulnerabilityType.insecureAutofill:
       case VulnerabilityType.sensorAbuse:
         return 'Permissions';
-      case VulnerabilityType.playIntegrityFailed:
-      case VulnerabilityType.firebaseAppCheckFailed:
-        return 'App Attestation';
       default:
         return 'Other';
     }
@@ -889,7 +781,6 @@ class _CategorySectionState extends State<_CategorySection> {
       'Communication'    => Icons.hub_outlined,
       'WebView'          => Icons.web_outlined,
       'Permissions'      => Icons.admin_panel_settings_outlined,
-      'App Attestation'  => Icons.verified_user_outlined,
       _                  => Icons.security,
     };
   }
@@ -1201,7 +1092,7 @@ class _ScanningCardState extends State<_ScanningCard>
         const Text('Scanning Device',
             style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: _textPri)),
         const SizedBox(height: 6),
-        const Text('Running 33 security checks…',
+        const Text('Running 31 security checks…',
             style: TextStyle(fontSize: 13, color: _textSec)),
         const SizedBox(height: 22),
         SizedBox(
@@ -1216,116 +1107,6 @@ class _ScanningCardState extends State<_ScanningCard>
           ),
         ),
       ]),
-    );
-  }
-}
-
-// ── Attestation Card ──────────────────────────────────────────────────────────
-
-class _AttestationCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color iconColor;
-  final bool loading;
-  final bool disabled;
-  final SecurityCheckResult? result;
-  final VoidCallback onTap;
-
-  const _AttestationCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.iconColor,
-    required this.loading,
-    required this.result,
-    required this.onTap,
-    this.disabled = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    Color statusColor = _textSec;
-    String statusLabel = 'TAP TO CHECK';
-    IconData statusIcon = Icons.play_circle_outline_rounded;
-
-    if (disabled) {
-      statusColor = _textSec;
-      statusLabel = 'NOT CONFIGURED';
-      statusIcon = Icons.settings_outlined;
-    } else if (loading) {
-      statusColor = _blue;
-      statusLabel = 'CHECKING...';
-      statusIcon = Icons.hourglass_top_rounded;
-    } else if (result != null) {
-      statusColor = result!.isVulnerable ? _danger : _accent;
-      statusLabel = result!.isVulnerable ? 'FAIL' : 'PASS';
-      statusIcon = result!.isVulnerable
-          ? Icons.warning_amber_rounded
-          : Icons.check_circle_outline_rounded;
-    }
-
-    return GestureDetector(
-      onTap: loading ? null : onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: _card,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: result != null && !loading
-                ? statusColor.withValues(alpha: 0.35)
-                : _border,
-          ),
-        ),
-        child: Row(children: [
-          Container(
-            width: 46, height: 46,
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(icon, color: iconColor, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: _textPri)),
-              const SizedBox(height: 3),
-              Text(subtitle,
-                  style: const TextStyle(fontSize: 12, color: _textSec)),
-              if (result != null && !result!.isVulnerable && result!.details?['token'] != null) ...[
-                const SizedBox(height: 5),
-                Text(
-                  'Token: ${(result!.details!['token'] as String).substring(0, 20)}…',
-                  style: const TextStyle(fontSize: 10, color: _textSec, fontFamily: 'monospace'),
-                ),
-              ],
-            ]),
-          ),
-          const SizedBox(width: 10),
-          loading
-              ? const SizedBox(
-                  width: 20, height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: _blue),
-                )
-              : Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(statusIcon, size: 12, color: statusColor),
-                    const SizedBox(width: 4),
-                    Text(statusLabel,
-                        style: TextStyle(fontSize: 10, color: statusColor,
-                            fontWeight: FontWeight.w700, letterSpacing: 0.6)),
-                  ]),
-                ),
-        ]),
-      ),
     );
   }
 }

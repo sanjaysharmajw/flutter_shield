@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -39,8 +41,69 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
   }
 
   @override
-  Future<SecurityCheckResult> checkRootedJailbroken() =>
-      _invokeCheck('checkRootedJailbroken', VulnerabilityType.rootedJailbroken);
+  Future<SecurityCheckResult> checkRootedJailbroken() async {
+    final nativeResult = await _invokeCheck(
+      'checkRootedJailbroken',
+      VulnerabilityType.rootedJailbroken,
+    );
+    if (nativeResult.isVulnerable) return nativeResult;
+
+    if (!kIsWeb && Platform.isAndroid) {
+      final dartDetected = await Future.wait([
+        _checkSuBinary(),
+        _checkRootPaths(),
+      ]).then((r) => r.any((v) => v));
+
+      if (dartDetected) {
+        return SecurityCheckResult(
+          type: VulnerabilityType.rootedJailbroken,
+          isVulnerable: true,
+          message: 'Root detected via Dart-side filesystem/binary checks',
+        );
+      }
+    }
+    return nativeResult;
+  }
+
+  static Future<bool> _checkSuBinary() async {
+    try {
+      final result = await Process.run('su', ['-c', 'id'])
+          .timeout(const Duration(seconds: 3));
+      return result.exitCode == 0;
+    } catch (_) {
+      try {
+        final which = await Process.run('which', ['su'])
+            .timeout(const Duration(seconds: 3));
+        return which.exitCode == 0;
+      } catch (_) {
+        return false;
+      }
+    }
+  }
+
+  static Future<bool> _checkRootPaths() async {
+    const paths = [
+      '/sbin/su',
+      '/system/bin/su',
+      '/system/xbin/su',
+      '/system/su',
+      '/su/bin/su',
+      '/data/local/su',
+      '/data/local/bin/su',
+      '/system/app/Superuser.apk',
+      '/system/app/SuperSU.apk',
+      '/data/adb/magisk',
+      '/sbin/.magisk',
+      '/data/adb/ksu',
+      '/data/adb/ksud',
+    ];
+    for (final path in paths) {
+      try {
+        if (await File(path).exists()) return true;
+      } catch (_) {}
+    }
+    return false;
+  }
 
   @override
   Future<SecurityCheckResult> checkDebuggable() =>
@@ -183,10 +246,6 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
       _invokeCheck('checkSideChannel', VulnerabilityType.sideChannelAttacks);
 
   @override
-  Future<SecurityCheckResult> checkPlayIntegrity() =>
-      _invokeCheck('checkPlayIntegrity', VulnerabilityType.playIntegrityFailed);
-
-  @override
   Future<SecurityReport> performFullSecurityCheck() async {
     final results = await Future.wait([
       checkRootedJailbroken(),
@@ -220,7 +279,6 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
       checkSensorAbuse(),
       checkDeviceTime(),
       checkSideChannel(),
-      checkPlayIntegrity(),
     ]);
 
     final vulnerabilities = results.where((r) => r.isVulnerable).length;

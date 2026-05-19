@@ -61,9 +61,6 @@ abstract class FlutterShieldPlatform extends PlatformInterface {
   Future<SecurityCheckResult> checkDeviceTime();
   Future<SecurityCheckResult> checkSideChannel();
 
-  // Play Integrity (Android only)
-  Future<SecurityCheckResult> checkPlayIntegrity();
-
   // Comprehensive check
   Future<SecurityReport> performFullSecurityCheck();
 }

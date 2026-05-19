@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/image.jpg?raw=true" alt="Flutter Shield" width="100%" />
+<img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/banners.png?raw=true" alt="Flutter Shield" width="100%" />
 
 # Flutter Shield 🛡️
 
@@ -12,7 +12,6 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/platform-android%20%7C%20ios-lightgrey.svg)](https://flutter.dev)
 [![Flutter](https://img.shields.io/badge/Flutter-%3E%3D3.3.0-02569B.svg?logo=flutter)](https://flutter.dev)
-[![Firebase](https://img.shields.io/badge/Firebase-App%20Check-orange.svg?logo=firebase)](https://firebase.google.com/docs/app-check)
 
 </div>
 
@@ -20,19 +19,9 @@
 
 ## Overview
 
-**Flutter Shield** gives you a single, unified API to detect **33+ security vulnerabilities** across Android and iOS — from root/jailbreak and Magisk detection to Firebase App Check attestation. Run a full scan in one call or cherry-pick individual checks for targeted enforcement.
+**Flutter Shield** gives you a single, unified API to detect **31 security vulnerabilities** across Android and iOS — from root/jailbreak and Magisk detection to storage, authentication, and runtime checks. Run a full scan in one call or cherry-pick individual checks for targeted enforcement.
 
----
-
-## Demo & Screenshots
-
-<div align="center">
-
-| Demo | Home Screen | Scan Results |
-|:----:|:-----------:|:------------:|
-| <img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/Screen_recording_20260507_103132.gif?raw=true" alt="Flutter Shield Demo" width="220"/> | <img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/Screenshot_20260507_103103.png?raw=true" width="220"/> | <img src="https://github.com/sanjaysharmajw/flutter_shield/blob/main/screenshots/Screenshot_20260507_103117.png?raw=true" width="220"/> |
-
-</div>
+Root detection alone runs **12 independent vectors** across both the native Kotlin layer and the Dart layer — covering Magisk, KernelSU, APatch, Zygisk, and traditional su-based root.
 
 ---
 
@@ -41,15 +30,14 @@
 - [Features](#features)
 - [Installation](#installation)
 - [Platform Setup](#platform-setup)
-- [Firebase App Check Setup](#firebase-app-check-setup)
 - [Quick Start](#quick-start)
 - [Usage](#usage)
   - [Full Security Scan](#full-security-scan)
   - [Individual Checks](#individual-checks)
-  - [Firebase App Check](#firebase-app-check)
   - [Handling Results](#handling-results)
   - [Conditional Feature Gating](#conditional-feature-gating)
 - [API Reference](#api-reference)
+- [Root Detection Vectors](#root-detection-vectors)
 - [Security Categories](#security-categories)
 - [Best Practices](#best-practices)
 - [Platform Differences](#platform-differences)
@@ -61,19 +49,18 @@
 
 ## Features
 
-Flutter Shield covers **33+ security checks** across 8 categories — all returned as typed, structured results.
+Flutter Shield covers **31 security checks** across 7 categories — all returned as typed, structured results.
 
 | Category | Checks | Description |
 |---|:---:|---|
-| 🔒 Device Integrity | 5 | Root, jailbreak, Magisk, emulator, debug, malware |
-| 🗄️ Storage Security | 6 | Local storage, plaintext, keychain, file permissions |
+| 🔒 Device Integrity | 5 | Root/jailbreak (12 vectors), Magisk, KernelSU, APatch, emulator, debug, malware |
+| 🗄️ Storage Security | 6 | Local storage, plaintext, keychain/keystore, file permissions, external storage |
 | 🔑 Authentication | 3 | Biometrics, bypass, screen lock |
-| 🖥️ UI Security | 6 | Screenshot, recording, clipboard, overlay, background |
+| 🖥️ UI Security | 6 | Screenshot, recording, clipboard, overlay, background exposure |
 | 📡 Communication | 4 | IPC, intent hijacking, broadcast receivers, deep links |
 | 🌐 WebView | 2 | Debugging, JavaScript interface |
 | ⚙️ Permissions & Runtime | 3 | Runtime permissions, autofill, sensor abuse |
 | 🔬 Other | 2 | Device time trust, side-channel attacks |
-| 🛡️ App Attestation | 2 | Play Integrity API token, Firebase App Check |
 
 ---
 
@@ -83,7 +70,7 @@ Add Flutter Shield to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flutter_shield: ^1.2.0
+  flutter_shield: ^1.2.1
 ```
 
 Then fetch dependencies:
@@ -102,11 +89,11 @@ Ensure your `android/app/build.gradle` targets a compatible API level:
 
 ```gradle
 android {
-    compileSdkVersion 34
+    compileSdkVersion 35
 
     defaultConfig {
         minSdkVersion 21       // Android 5.0+
-        targetSdkVersion 34
+        targetSdkVersion 35
     }
 }
 ```
@@ -129,62 +116,6 @@ If your app uses sensor-related checks, add the required usage descriptions to `
 <key>NSLocationWhenInUseUsageDescription</key>
 <string>Required for sensor security checks</string>
 ```
-
----
-
-## Firebase App Check Setup
-
-Firebase App Check provides the strongest device attestation — it defeats Magisk + Shamiko by verifying integrity server-side via Google. No custom backend is required.
-
-### Step 1 — Create Firebase Project
-
-1. Go to [console.firebase.google.com](https://console.firebase.google.com)
-2. Create a project → Add an **Android app** with your package name
-3. Download `google-services.json` → place it in `android/app/`
-4. For iOS: download `GoogleService-Info.plist` → place it in `ios/Runner/`
-
-### Step 2 — Enable App Check
-
-Firebase Console → Build → **App Check** → Register your app:
-- **Android** → Select **Play Integrity**
-- **iOS** → Select **App Attest** (or DeviceCheck for older devices)
-
-### Step 3 — Add `google-services` plugin
-
-In `android/build.gradle`:
-```gradle
-dependencies {
-  classpath 'com.google.gms:google-services:4.4.2'
-}
-```
-
-In `android/app/build.gradle`:
-```gradle
-apply plugin: 'com.google.gms.google-services'
-```
-
-### Step 4 — Initialize in `main.dart`
-
-```dart
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  await Firebase.initializeApp();
-
-  await FirebaseAppCheck.instance.activate(
-    androidProvider: AndroidProvider.playIntegrity, // production
-    // androidProvider: AndroidProvider.debug,      // testing only
-    appleProvider: AppleProvider.appAttest,         // iOS
-  );
-
-  runApp(const MyApp());
-}
-```
-
-> **Note:** Firebase App Check is optional. All other Flutter Shield checks work independently without Firebase.
 
 ---
 
@@ -237,19 +168,19 @@ Run specific checks when you need targeted enforcement:
 
 ```dart
 // Device integrity
-final rootCheck    = await FlutterShield.checkRootedJailbroken();
-final debugCheck   = await FlutterShield.checkDebuggable();
-final usbCheck     = await FlutterShield.checkUsbDebugging();   // Android
+final rootCheck     = await FlutterShield.checkRootedJailbroken();
+final debugCheck    = await FlutterShield.checkDebuggable();
+final usbCheck      = await FlutterShield.checkUsbDebugging();    // Android
 final emulatorCheck = await FlutterShield.checkEmulator();
-final malwareCheck = await FlutterShield.checkMalware();
+final malwareCheck  = await FlutterShield.checkMalware();
 
 // Storage
-final storageCheck  = await FlutterShield.checkLocalStorage();
+final storageCheck   = await FlutterShield.checkLocalStorage();
 final plaintextCheck = await FlutterShield.checkPlaintextData();
-final keystoreCheck = await FlutterShield.checkKeychainKeystore();
+final keystoreCheck  = await FlutterShield.checkKeychainKeystore();
 
 // Authentication
-final biometricCheck = await FlutterShield.checkBiometricHandling();
+final biometricCheck  = await FlutterShield.checkBiometricHandling();
 final screenLockCheck = await FlutterShield.checkScreenLock();
 
 // UI
@@ -257,54 +188,10 @@ final screenshotCheck = await FlutterShield.checkScreenshotRestriction();
 final clipboardCheck  = await FlutterShield.checkClipboard();
 
 // WebView
-final webViewDebugCheck = await FlutterShield.checkWebViewDebugging();
+final webViewCheck = await FlutterShield.checkWebViewDebugging();
 
 if (rootCheck.isVulnerable) {
   print('🚨 Device is rooted/jailbroken: ${rootCheck.message}');
-}
-```
-
-### Firebase App Check
-
-The strongest check — verifies both app and device integrity via Google's servers. Defeats Magisk + Shamiko.
-
-```dart
-// Requires Firebase.initializeApp() + FirebaseAppCheck.activate() first
-final appCheckResult = await FlutterShield.checkFirebaseAppCheck();
-
-if (appCheckResult.isVulnerable) {
-  // Device or app failed attestation — block access
-  showSecurityBlockedScreen();
-} else {
-  print('App Check passed: ${appCheckResult.message}');
-}
-```
-
-Combined with root detection for maximum coverage:
-
-```dart
-Future<bool> isDeviceTrusted() async {
-  final results = await Future.wait([
-    FlutterShield.checkRootedJailbroken(),
-    FlutterShield.checkEmulator(),
-    FlutterShield.checkFirebaseAppCheck(),
-  ]);
-  return results.every((r) => !r.isVulnerable);
-}
-```
-
-### Play Integrity Token (Manual Server Verification)
-
-If you want to verify the token on your own backend instead of using Firebase:
-
-```dart
-final result = await FlutterShield.checkPlayIntegrity();
-
-if (!result.isVulnerable) {
-  final token = result.details?['token'] as String?;
-  final nonce = result.details?['nonce'] as String?;
-  // Send token to your server for verification
-  await yourBackend.verifyIntegrityToken(token!, nonce!);
 }
 ```
 
@@ -345,21 +232,16 @@ Block sensitive features on compromised devices:
 
 ```dart
 Future<bool> canAccessSensitiveFeature() async {
-  // Run checks in parallel for speed
   final results = await Future.wait([
     FlutterShield.checkRootedJailbroken(),
     FlutterShield.checkDebuggable(),
     FlutterShield.checkEmulator(),
   ]);
-
-  final isCompromised = results.any((r) => r.isVulnerable);
-  return !isCompromised;
+  return results.every((r) => !r.isVulnerable);
 }
 
-// Usage
 Future<void> openPaymentScreen() async {
   if (!await canAccessSensitiveFeature()) {
-    // Deny access on compromised devices
     showSecurityWarning();
     return;
   }
@@ -379,8 +261,8 @@ All methods are static and return `Future<SecurityCheckResult>` unless otherwise
 
 | Method | Description | Platform |
 |---|---|:---:|
-| `checkRootedJailbroken()` | Detects rooted (Android) or jailbroken (iOS) device using multiple methods | Both |
-| `checkDebuggable()` | Checks if the app was built with the debuggable flag | Both |
+| `checkRootedJailbroken()` | Detects rooted (Android) or jailbroken (iOS) device using 12 independent vectors | Both |
+| `checkDebuggable()` | Checks if the app was built with the debuggable flag or signed with a debug certificate | Both |
 | `checkUsbDebugging()` | Checks if ADB / USB debugging is currently enabled | Android |
 | `checkEmulator()` | Detects Android emulator or iOS Simulator | Both |
 | `checkMalware()` | Basic suspicious-app detection | Android |
@@ -446,21 +328,12 @@ All methods are static and return `Future<SecurityCheckResult>` unless otherwise
 | `checkDeviceTime()` | Checks if device uses automatic network time | Android |
 | `checkSideChannel()` | Checks for side-channel attack exposure | Both |
 
-#### App Attestation
-
-| Method | Description | Platform |
-|---|---|:---:|
-| `checkPlayIntegrity()` | Requests a Play Integrity token. Returns token in `details['token']` for server-side verification via Google Play Integrity API. Defeats Magisk/Shamiko when verified server-side. | Android |
-| `checkFirebaseAppCheck()` | Verifies device and app integrity via Firebase App Check (Play Integrity on Android, App Attest on iOS). No custom backend needed — Firebase handles verification. Requires `Firebase.initializeApp()` and `FirebaseAppCheck.activate()`. | Both |
-
 #### Comprehensive Check
 
 ```dart
-// Returns Future<SecurityReport> — includes all 33 checks including Play Integrity
+// Returns Future<SecurityReport> — includes all 31 checks
 final report = await FlutterShield.performFullSecurityCheck();
 ```
-
-> **Note:** `checkFirebaseAppCheck()` is NOT included in `performFullSecurityCheck()` because it requires Firebase to be initialized first. Call it separately after `FirebaseAppCheck.activate()`.
 
 ---
 
@@ -468,9 +341,9 @@ final report = await FlutterShield.performFullSecurityCheck();
 
 ```dart
 class SecurityCheckResult {
-  final VulnerabilityType type;        // Which vulnerability was checked
-  final bool isVulnerable;            // true = issue found
-  final String message;               // Human-readable description
+  final VulnerabilityType type;         // Which vulnerability was checked
+  final bool isVulnerable;             // true = issue found
+  final String message;                // Human-readable description
   final Map<String, dynamic>? details; // Optional platform-specific metadata
 }
 ```
@@ -479,12 +352,12 @@ class SecurityCheckResult {
 
 ```dart
 class SecurityReport {
-  final List<SecurityCheckResult> results;  // All 31 check results
-  final DateTime timestamp;                 // When the scan ran
-  final int totalChecks;                    // Always 31
-  final int vulnerabilitiesFound;           // Number of failed checks
+  final List<SecurityCheckResult> results; // All 31 check results
+  final DateTime timestamp;                // When the scan ran
+  final int totalChecks;                   // Always 31
+  final int vulnerabilitiesFound;          // Number of failed checks
 
-  bool get isSecure;                        // true when vulnerabilitiesFound == 0
+  bool get isSecure;                           // true when vulnerabilitiesFound == 0
   List<SecurityCheckResult> get vulnerabilities; // Only failed results
 }
 ```
@@ -511,24 +384,54 @@ enum VulnerabilityType {
   runtimePermissionMissing, insecureAutofill, sensorAbuse,
   // Other
   trustingDeviceTime, sideChannelAttacks,
-  // App Attestation
-  playIntegrityFailed,      // Play Integrity token request failed
-  firebaseAppCheckFailed,   // Firebase App Check attestation failed
   unknown,
 }
 ```
 
 ---
 
+## Root Detection Vectors
+
+`checkRootedJailbroken()` runs **12 independent vectors** across two layers — bypassing one layer does not bypass the other.
+
+### Layer 1 — Native (Kotlin, Android)
+
+| # | Vector | What it checks |
+|---|---|---|
+| 1 | **Test-keys build tag** | `Build.TAGS` contains `"test-keys"` — indicates unofficial/rooted firmware |
+| 2 | **su binary paths** | 11 known locations: `/sbin/su`, `/system/xbin/su`, `/su/bin/su`, etc. |
+| 3 | **su command execution** | Runs `which su` via `/system/bin/which`, `/system/xbin/which`, and `which` |
+| 4 | **Magisk / KernelSU / APatch paths** | 15 paths: `/data/adb/magisk`, `/sbin/.magisk`, `/data/adb/ksu`, `/data/adb/apatch`, etc. |
+| 5 | **Root manager packages** | 18 package names: Magisk Manager, Magisk Delta, KernelSU, APatch, SuperSU, KingRoot, etc. |
+| 6 | **Dangerous system properties** | `ro.debuggable=1`, `ro.secure=0`, `ro.build.selinux=0`, `ro.build.type=userdebug/eng` |
+| 7 | **Writable system partitions** | `/system`, `/system/bin`, `/vendor/bin`, `/sbin`, `/etc` |
+| 8 | **SELinux permissive mode** | `getenforce` returns `Permissive` — root almost certain |
+| 9 | **Magisk daemon Unix socket** | `/proc/net/unix` contains `@magisk_service` or `@ksu_` — survives path hiding |
+| 10 | **Zygisk process maps** | `/proc/self/maps` contains `zygisk` or `/data/adb/modules` — survives filesystem hiding |
+
+### Layer 2 — Dart (`dart:io`, Android)
+
+| # | Vector | What it checks |
+|---|---|---|
+| 11 | **su binary execution** | `Process.run('su', ['-c', 'id'])` with 3-second timeout; falls back to `which su` |
+| 12 | **Filesystem paths** | 13 paths: `/data/adb/magisk`, `/sbin/.magisk`, `/data/adb/ksu`, `/data/adb/ksud`, etc. |
+
+> The result message tells you **which specific vectors triggered**, e.g.:
+> `"Device is rooted: Magisk/KSU/APatch files detected, root management app installed, SELinux permissive mode"`
+
+---
+
 ## Security Categories
 
 ```
-Flutter Shield — 33 Checks
+Flutter Shield — 31 Checks
 │
 ├── 🔒 Device Integrity (5)
-│   ├── Root / Jailbreak detection     [7 vectors: su paths, test-keys,
-│   │                                   Magisk paths, root packages,
-│   │                                   dangerous props, writable /system]
+│   ├── Root / Jailbreak detection     [12 vectors: 10 native + 2 Dart]
+│   │   ├── Native: test-keys, su paths, which su, Magisk/KSU/APatch paths,
+│   │   │          root packages, dangerous props, writable /system,
+│   │   │          SELinux permissive, Magisk socket, Zygisk maps
+│   │   └── Dart:  su binary execution, filesystem path scan
 │   ├── Debuggable app flag + debug signing cert
 │   ├── USB debugging status           [Android]
 │   ├── Emulator / Simulator
@@ -570,13 +473,9 @@ Flutter Shield — 33 Checks
 │   ├── Autofill security
 │   └── Sensor abuse (Camera/Mic/GPS)
 │
-├── 🔬 Other (2)
-│   ├── Device time trust (Auto time)  [Android]
-│   └── Side-channel attack exposure
-│
-└── 🛡️ App Attestation (2)
-    ├── Play Integrity API token       [Android — verify server-side]
-    └── Firebase App Check             [Android + iOS — no server needed]
+└── 🔬 Other (2)
+    ├── Device time trust (Auto time)  [Android]
+    └── Side-channel attack exposure
 ```
 
 ---
@@ -629,17 +528,18 @@ Rather than silently blocking, show clear explanations so users understand the r
 
 | Check | Android | iOS |
 |---|:---:|:---:|
-| Root / Jailbreak | ✅ su binaries, Magisk paths, root packages, build tags | ✅ Cydia paths, DYLD |
+| Root / Jailbreak | ✅ 10 native vectors + 2 Dart vectors | ✅ Cydia paths, DYLD |
 | USB Debugging | ✅ ADB setting | ➖ N/A |
 | External Storage | ✅ | ➖ Sandboxed |
 | Intent Hijacking | ✅ | ➖ N/A |
 | Broadcast Receivers | ✅ | ➖ N/A |
 | Backup Enabled | ✅ | ➖ Different model |
-| Screen Recording | ✅ Guided | ✅ `UIScreen.isCaptured` |
+| Screen Recording | ✅ | ✅ `UIScreen.isCaptured` |
 | Device Time | ✅ Auto-time setting | ➖ Server-side only |
 | Overlay Attack | ✅ | ✅ System-protected |
-| Play Integrity | ✅ Google Play Services | ➖ N/A |
-| Firebase App Check | ✅ Play Integrity provider | ✅ App Attest / DeviceCheck |
+| SELinux Check | ✅ `getenforce` | ➖ N/A |
+| Magisk Socket | ✅ `/proc/net/unix` | ➖ N/A |
+| Zygisk Maps | ✅ `/proc/self/maps` | ➖ N/A |
 
 ---
 

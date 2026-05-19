@@ -5,6 +5,70 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.1] - 2026-05-19
+
+### Added
+
+- **Root detection — 3 new native vectors (total: 10 native + 2 Dart = 12 vectors)**
+
+  - **SELinux permissive check** — runs `getenforce`; if the result is `Permissive`, root is almost certain. Magisk on older kernels disables SELinux enforcement and this survives all path-hiding techniques.
+  - **Magisk daemon Unix socket** — reads `/proc/net/unix` for abstract sockets `@magisk_service` or `@ksu_`. The Magisk daemon always registers this socket; it is a kernel-level record and cannot be hidden by Magisk Hide or Zygisk.
+  - **Zygisk process memory maps** — reads `/proc/self/maps` for `zygisk` or `/data/adb/modules`. Zygisk injects a native library into every process at startup; its path appears in the memory map regardless of filesystem-level hiding.
+
+- **KernelSU & APatch detection**
+  - Added KernelSU paths: `/data/adb/ksu`, `/data/adb/ksud`, `/data/adb/ksu/bin/ksud`
+  - Added APatch paths: `/data/adb/ap`, `/data/adb/apatch`
+  - Added KernelSU Manager package: `me.weishu.kernelsu`
+  - Added APatch Manager package: `me.bmax.apatch`
+  - Added `ro.build.type=userdebug` and `ro.build.type=eng` to dangerous props check
+  - Detection label updated to `"Magisk/KSU/APatch files detected"` to reflect broader coverage
+
+- **Dart-layer root check (Layer 2)** — `_checkSuBinary()` and `_checkRootPaths()` added to `MethodChannelFlutterShield.checkRootedJailbroken()`. These run after the native check and provide an independent Dart-side verification using `dart:io` `Process` and `File` APIs. If native checks are bypassed, Dart-layer checks still run.
+
+### Fixed
+
+- **`checkSuCommand()` — hardcoded `/system/xbin/which` path (Kotlin)**
+  The `which` binary is at `/system/bin/which` on most Android devices, not `/system/xbin/which`. The check was silently failing on the majority of real devices. Now tries `/system/bin/which`, `/system/xbin/which`, and plain `which` in order.
+
+- **`checkSuCommand()` — stderr not consumed, causing deadlock (Kotlin)**
+  `Runtime.getRuntime().exec()` creates a process with a bounded stderr pipe. If stderr fills up and is never read, the child process blocks writing to it, and the parent (our check) blocks waiting for stdout. This caused a silent hang on some devices. Fixed by calling `process.errorStream.close()` immediately after exec.
+
+- **`checkSuCommand()` — zombie processes from `destroy()` without `waitFor()` (Kotlin)**
+  Calling `process.destroy()` without first calling `process.waitFor()` leaves a zombie process entry in the kernel process table. Fixed by calling `waitFor()` before `destroy()` in all exec-based checks.
+
+- **`checkDangerousProps()` — same stderr + zombie process bugs (Kotlin)**
+  Applied the same `errorStream.close()` + `waitFor()` fix to the `getprop` process in `checkDangerousProps()`.
+
+- **`process.waitFor()` without timeout — indefinite hang on 3 exec-based checks (Kotlin)**
+  `checkSuCommand()`, `checkDangerousProps()`, and `checkSeLinuxPermissive()` all called `process.waitFor()` with no timeout. If the spawned process hangs (e.g. `su` blocked on an SELinux prompt, or `getprop` stalled), the method channel call would block the main thread indefinitely. Fixed by replacing all three with `process.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)`.
+
+- **`checkDangerousProps()` — `ro.build.type=eng` not detected (Kotlin)**
+  The check only matched `"userdebug"` for `ro.build.type`. Engineering (`"eng"`) builds are equally insecure — `ro.debuggable` is also `1` and `ro.secure` is `0` on engineering builds. Changed the props definition from `Map<String, String>` to `List<Pair<String, Set<String>>>` so each property matches against a set of dangerous values. `ro.build.type` now flags both `"userdebug"` and `"eng"`.
+
+- **`checkExternalStorage()` — `walkTopDown()` throws `SecurityException` on restricted storage (Kotlin)**
+  External storage traversal via `walkTopDown()` can throw `SecurityException` or `IOException` when the storage is unmounted or the app's permission has been revoked at runtime. The traversal was not wrapped in a try-catch, causing an unhandled exception that crashed the entire check. Fixed by wrapping in `try { ... } catch (_: Exception) { false }`.
+
+- **`checkPermissions()` — deprecated `PROCESS_OUTGOING_CALLS` constant (Kotlin)**
+  The check referenced `android.Manifest.permission.PROCESS_OUTGOING_CALLS`, which was deprecated in API 29. Replaced with the equivalent string literal `"android.permission.PROCESS_OUTGOING_CALLS"` — stable, no deprecation warning, and semantically identical for manifest-inspection purposes.
+
+- **iOS `checkLocalStorage()` — guaranteed false positive on every Flutter app (Swift)**
+  `UserDefaults.standard.dictionaryRepresentation()` is never empty on a running Flutter app — the Flutter engine writes its own keys (`flutter.*`) at startup, before any app code runs. The check compared against an empty dictionary and therefore always returned `isVulnerable: true`. Fixed by filtering out well-known framework key prefixes (`flutter.`, `com.apple.`, `NS`, `Apple`, `UIKit`, `firebase.`, `io.flutter.`) before checking for app-specific keys.
+
+- **iOS `checkClipboard()` — hardcoded `isVulnerable: true` always (Swift)**
+  The implementation was an unfinished stub that unconditionally returned `isVulnerable: true` with the message "Clipboard monitoring not implemented", regardless of clipboard state. On iOS 14+, accessing `UIPasteboard.general.string` without the user having placed the content there triggers a system notification banner — inappropriate for a background security check. Replaced with a non-intrusive `UIPasteboard.general.hasStrings` / `hasURLs` occupancy check (no banner, no content read) that returns `isVulnerable: false` with an advisory message.
+
+- **Example app — stale version badge and incorrect check count**
+  The home screen version pill displayed `v1.2.0` (one version behind). The scanning overlay text read "Running 33 security checks" (incorrect — the package runs 31 checks). Both corrected to reflect actual values.
+
+### Removed
+
+- **Firebase App Check integration** — `checkFirebaseAppCheck()` method, `firebase_core` and `firebase_app_check` dependencies, and the Firebase App Check Setup section have been removed. The integration introduced mandatory Firebase project setup as a side-effect for all users of the package, even those not using App Check. Root detection now covers the same threat surface via the 12-vector native+Dart approach.
+- **Play Integrity API integration** — `checkPlayIntegrity()` method and its Kotlin implementation removed. Play Integrity requires a server-side verification step that cannot be bundled into a client library; including an unverified token check was misleading about the actual security guarantee.
+- **`VulnerabilityType.playIntegrityFailed`** and **`VulnerabilityType.firebaseAppCheckFailed`** enum values removed.
+- **`kotlinx-coroutines-android`**, **`kotlinx-coroutines-play-services`**, and **`com.google.android.play:integrity`** dependencies removed from `android/build.gradle`.
+
+---
+
 ## [1.2.0] - 2026-05-19
 
 ### Added

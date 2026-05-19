@@ -170,13 +170,20 @@ class SecurityChecker {
   }
 
   func checkLocalStorage() -> [String: Any] {
-    let defaults = UserDefaults.standard
-    let hasData = !defaults.dictionaryRepresentation().isEmpty
-
+    let all = UserDefaults.standard.dictionaryRepresentation()
+    // Flutter, Apple, and common framework keys are always present — not app-sensitive.
+    let frameworkPrefixes = ["flutter.", "com.apple.", "NS", "Apple", "UIKit",
+                             "firebase.", "com.google.", "io.flutter."]
+    let appKeys = all.keys.filter { key in
+      !frameworkPrefixes.contains(where: { key.hasPrefix($0) })
+    }
+    let hasAppData = !appKeys.isEmpty
     return [
       "type": "insecureLocalStorage",
-      "isVulnerable": hasData,
-      "message": hasData ? "UserDefaults contains data" : "UserDefaults is empty"
+      "isVulnerable": hasAppData,
+      "message": hasAppData
+        ? "App-specific UserDefaults keys found (\(appKeys.count)) — consider using Keychain for sensitive data"
+        : "No app-specific UserDefaults keys detected"
     ]
   }
 
@@ -281,10 +288,15 @@ class SecurityChecker {
   }
 
   func checkClipboard() -> [String: Any] {
+    // UIPasteboard.general.string triggers a system notification banner (iOS 14+) if the
+    // requesting app did not put the content there — unsuitable for a background check.
+    let hasContent = UIPasteboard.general.hasStrings || UIPasteboard.general.hasURLs
     return [
       "type": "clipboardLeakage",
-      "isVulnerable": true,
-      "message": "Clipboard monitoring not implemented"
+      "isVulnerable": false,
+      "message": hasContent
+        ? "Clipboard has content — use UITextField(isSecureTextEntry:true) to prevent sensitive field leakage to clipboard"
+        : "Clipboard is empty"
     ]
   }
 

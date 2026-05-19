@@ -138,10 +138,6 @@ class FlutterShieldStub extends FlutterShieldPlatform {
       _notApplicable(VulnerabilityType.sideChannelAttacks);
 
   @override
-  Future<SecurityCheckResult> checkPlayIntegrity() async =>
-      _notApplicable(VulnerabilityType.playIntegrityFailed);
-
-  @override
   Future<SecurityReport> performFullSecurityCheck() async {
     final results = await Future.wait([
       checkRootedJailbroken(),
@@ -175,7 +171,6 @@ class FlutterShieldStub extends FlutterShieldPlatform {
       checkSensorAbuse(),
       checkDeviceTime(),
       checkSideChannel(),
-      checkPlayIntegrity(),
     ]);
 
     return SecurityReport(

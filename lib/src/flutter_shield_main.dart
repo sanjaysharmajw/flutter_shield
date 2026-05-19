@@ -1,5 +1,3 @@
-import 'package:firebase_app_check/firebase_app_check.dart';
-
 import '../flutter_shield.dart';
 
 /// Main Flutter Shield class for security checks
@@ -143,38 +141,6 @@ class FlutterShield {
   /// Check for side-channel attack vulnerabilities
   static Future<SecurityCheckResult> checkSideChannel() =>
       _platform.checkSideChannel();
-
-  /// Check Play Integrity API — returns a token to verify server-side.
-  /// Android only. Requires Google Play Services on device.
-  /// Token in result.details['token'] must be sent to your backend
-  /// and verified via Google Play Integrity API for a full verdict.
-  static Future<SecurityCheckResult> checkPlayIntegrity() =>
-      _platform.checkPlayIntegrity();
-
-  /// Check Firebase App Check using Play Integrity provider.
-  /// Requires Firebase to be initialized (Firebase.initializeApp()) and
-  /// FirebaseAppCheck.instance.activate() called before using this method.
-  /// Android: uses Play Integrity. iOS: uses App Attest/DeviceCheck.
-  static Future<SecurityCheckResult> checkFirebaseAppCheck() async {
-    try {
-      final token = await FirebaseAppCheck.instance.getToken(true);
-      final isVulnerable = token == null;
-      return SecurityCheckResult(
-        type: VulnerabilityType.firebaseAppCheckFailed,
-        isVulnerable: isVulnerable,
-        message: isVulnerable
-            ? 'Firebase App Check failed — device or app integrity not verified'
-            : 'Firebase App Check passed',
-        details: token != null ? {'token': token} : null,
-      );
-    } catch (e) {
-      return SecurityCheckResult(
-        type: VulnerabilityType.firebaseAppCheckFailed,
-        isVulnerable: true,
-        message: 'Firebase App Check error: $e',
-      );
-    }
-  }
 
   // Comprehensive Check
 
