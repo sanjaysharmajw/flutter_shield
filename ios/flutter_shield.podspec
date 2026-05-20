@@ -4,16 +4,16 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'flutter_shield'
-  s.version          = '1.2.1'
+  s.version          = '1.2.2'
   s.summary          = 'A comprehensive device security and vulnerability detection package for Flutter.'
   s.description      = <<-DESC
-Flutter Shield provides a unified API to detect 33+ security vulnerabilities across Android and iOS — from Magisk root detection to Firebase App Check attestation.
+Flutter Shield provides a unified API to detect 31 security vulnerabilities across Android and iOS — from Magisk/KernelSU/APatch root detection to storage, biometric, and runtime checks.
                        DESC
   s.homepage         = 'https://github.com/sanjaysharmajw/flutter_shield'
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Sanjay Sharma' => 'sanjaysharmajw@gmail.com' }
   s.source           = { :path => '.' }
-  s.source_files = 'Sources/flutter_shield/**/*.swift'
+  s.source_files = 'flutter_shield/Sources/flutter_shield/**/*.swift'
   s.dependency 'Flutter'
   s.platform = :ios, '12.0'
 

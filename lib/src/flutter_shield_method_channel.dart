@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' if (dart.library.js_interop) 'dart_io_stub.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -48,7 +48,7 @@ class MethodChannelFlutterShield extends FlutterShieldPlatform {
     );
     if (nativeResult.isVulnerable) return nativeResult;
 
-    if (!kIsWeb && Platform.isAndroid) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       final dartDetected = await Future.wait([
         _checkSuBinary(),
         _checkRootPaths(),

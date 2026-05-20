@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.2] - 2026-05-20
+
+### Fixed
+
+- **WASM compatibility — `dart:io` unconditional import**
+  `flutter_shield_method_channel.dart` imported `dart:io` unconditionally, making the package incompatible with WASM/web runtimes. Changed to a conditional import (`import 'dart:io' if (dart.library.js_interop) 'dart_io_stub.dart'`) so native platforms use `dart:io` and WASM/web get a no-op stub. All call sites were already guarded by `!kIsWeb && defaultTargetPlatform == TargetPlatform.android`, so behaviour on all platforms is unchanged. `Platform.isAndroid` replaced with `defaultTargetPlatform == TargetPlatform.android` (from `flutter/foundation.dart`) to eliminate the last `dart:io`-only API reference.
+
+- **Swift Package Manager (SPM) — wrong directory structure**
+  pub.dev pana expected `ios/flutter_shield/Package.swift` but the package had `ios/Package.swift`. Restructured the iOS native sources to the canonical Flutter SPM layout: `ios/flutter_shield/Package.swift` with sources at `ios/flutter_shield/Sources/flutter_shield/FlutterShieldPlugin.swift`. Updated `ios/flutter_shield.podspec` source path to `flutter_shield/Sources/flutter_shield/**/*.swift` to match.
+
+- **podspec description** — removed stale Firebase/33-check reference; updated to reflect 31 checks and current detection scope.
+
+---
+
 ## [1.2.1] - 2026-05-19
 
 ### Added
